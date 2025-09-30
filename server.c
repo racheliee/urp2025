@@ -36,7 +36,7 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
                params->nbytes, (unsigned long)params->pba,
                bytes[0], bytes[1], bytes[2], bytes[3]);
         fflush(stdout);
-    }
+    } // end of sanity check
 
     return &result;
 }

@@ -119,13 +119,12 @@ int main(int argc, char *argv[]) {
         }
 
         // sanity check; remove later
-        if (i % 100 == 0) { // print every 100 iterations
-            unsigned char *bytes = (unsigned char *)buf;
-            printf("[Client] Iter %ld: logical=%ld PBA=%lu nbytes=%d FirstBytes=%02x %02x %02x %02x\n",
-                   i, (long)logical, (unsigned long)pba, (int)r,
-                   bytes[0], bytes[1], bytes[2], bytes[3]);
-            fflush(stdout);
-        } // end of sanity check
+        unsigned char *bytes = (unsigned char *)buf;
+        printf("[Client] Iter %ld: logical=%ld PBA=%lu nbytes=%d FirstBytes=%02x %02x %02x %02x\n",
+               i, (long)logical, (unsigned long)pba, (int)r,
+               bytes[0], bytes[1], bytes[2], bytes[3]);
+        fflush(stdout);
+        // end of sanity check
 
         pba_write_params params;
         params.pba = pba;
