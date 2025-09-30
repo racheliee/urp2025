@@ -82,6 +82,17 @@ int main(int argc, char *argv[]) {
 
     srand((unsigned)time(NULL));
 
+    // Start timing
+    struct timespec start_time, end_time;
+    if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0) {
+        perror("clock_gettime start");
+        free(buf); close(src); close(dst);
+        return 1;
+    }
+
+    printf("Starting %ld random copy operations (block size: %zu bytes)...\n", 
+           iterations, block_size);
+
     for (long i = 0; i < iterations; i++) {
         // pick random aligned offset
         off_t max_blocks = filesize / block_size;
@@ -106,6 +117,30 @@ int main(int argc, char *argv[]) {
             written += w;
         }
     }
+
+    // End timing
+    if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0) {
+        perror("clock_gettime end");
+        free(buf); close(src); close(dst);
+        return 1;
+    }
+
+    // Calculate elapsed time
+    double elapsed = (end_time.tv_sec - start_time.tv_sec) + 
+                    (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    
+    // Calculate statistics
+    long long total_bytes = (long long)iterations * block_size;
+    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / elapsed;
+    double ops_per_sec = iterations / elapsed;
+
+    printf("\nResults:\n");
+    printf("  Total operations: %ld\n", iterations);
+    printf("  Block size: %zu bytes\n", block_size);
+    printf("  Total data copied: %.2f MB\n", total_bytes / (1024.0 * 1024.0));
+    printf("  Elapsed time: %.3f seconds\n", elapsed);
+    printf("  Throughput: %.2f MB/s\n", throughput_mbps);
+    printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
 
     free(buf);
     close(src);
