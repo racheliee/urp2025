@@ -104,6 +104,15 @@ int main(int argc, char *argv[]) {
     }
 
     for (long i = 0; i < iterations; i++) {
+        // sanity check; remove later
+        if (i % 100 == 0) { // print every 100 iterations
+            unsigned char *bytes = (unsigned char *)buf;
+            printf("[Client] Iter %ld: logical=%ld PBA=%lu nbytes=%d FirstBytes=%02x %02x %02x %02x\n",
+                   i, (long)logical, (unsigned long)pba, (int)r,
+                   bytes[0], bytes[1], bytes[2], bytes[3]);
+            fflush(stdout);
+        } // end of sanity check
+
         off_t max_blocks = filesize / block_size;
         off_t block = rand() % max_blocks;
         off_t logical = block * block_size;

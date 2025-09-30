@@ -42,3 +42,15 @@ Traditional file transfer tools (e.g., `scp`, `rsync`) operate at the file-conte
 * **Resume Support**: restart partially completed copies by tracking block ranges.
 * **Cross-Filesystem Experiments**: copy blocks between ext4, XFS, and btrfs.
 * **Fault Tolerance**: add retries, checkpointing, and failure recovery.
+
+
+## Running the RPC
+
+```
+# client
+sudo ./client eternity2 /mnt/nvme/1gb.txt -b 4096 -n 1000
+
+
+# server
+sudo ./server
+```

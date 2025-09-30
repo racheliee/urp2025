@@ -1,12 +1,12 @@
 #define _GNU_SOURCE
-#include "blockcopy.h"
 #include "server.h"
+#include "blockcopy.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <errno.h>
 
 int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     static int result = 0;
@@ -27,6 +27,15 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
         result = -1;
     } else {
         result = 0;
+    }
+
+    // sanity check; remove later
+    if (params->nbytes > 0) {
+        unsigned char *bytes = (unsigned char *)params->data.data_val;
+        printf("[Server] Wrote %d bytes at PBA=%lu FirstBytes=%02x %02x %02x %02x\n",
+               params->nbytes, (unsigned long)params->pba,
+               bytes[0], bytes[1], bytes[2], bytes[3]);
+        fflush(stdout);
     }
 
     return &result;
