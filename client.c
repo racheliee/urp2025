@@ -1,17 +1,17 @@
 #define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/fiemap.h>
+#include <linux/fs.h>
+#include <rpc/rpc.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include <linux/fiemap.h>
-#include <linux/fs.h>
-#include <sys/ioctl.h>
-#include <rpc/rpc.h>
+#include <unistd.h>
 
 #include "blockcopy.h"
 #include "client.h"
@@ -22,7 +22,7 @@ static int get_pba(int fd, off_t logical, uint64_t *pba_out) {
     struct fiemap *fiemap = calloc(1, size);
 
     fiemap->fm_start = logical;
-    fiemap->fm_length = 4096;   /* map one block */
+    fiemap->fm_length = 4096; /* map one block */
     fiemap->fm_extent_count = 1;
 
     if (ioctl(fd, FS_IOC_FIEMAP, fiemap) < 0) {
@@ -78,10 +78,16 @@ int main(int argc, char *argv[]) {
     }
 
     int fd = open(src_path, O_RDONLY | O_DIRECT);
-    if (fd < 0) { perror("open src"); exit(1); }
+    if (fd < 0) {
+        perror("open src");
+        exit(1);
+    }
 
     struct stat st;
-    if (fstat(fd, &st) < 0) { perror("fstat"); exit(1); }
+    if (fstat(fd, &st) < 0) {
+        perror("fstat");
+        exit(1);
+    }
     off_t filesize = st.st_size;
 
     void *buf;
@@ -92,16 +98,25 @@ int main(int argc, char *argv[]) {
 
     srand((unsigned)time(NULL));
 
+    struct timespec start_time, end_time;
+    if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0) {
+        perror("clock_gettime start");
+    }
+
     for (long i = 0; i < iterations; i++) {
         off_t max_blocks = filesize / block_size;
         off_t block = rand() % max_blocks;
         off_t logical = block * block_size;
 
         uint64_t pba;
-        if (get_pba(fd, logical, &pba) != 0) continue;
+        if (get_pba(fd, logical, &pba) != 0)
+            continue;
 
         ssize_t r = pread(fd, buf, block_size, logical);
-        if (r < 0) { perror("pread"); break; }
+        if (r < 0) {
+            perror("pread");
+            break;
+        }
 
         pba_write_params params;
         params.pba = pba;
@@ -119,5 +134,20 @@ int main(int argc, char *argv[]) {
     free(buf);
     close(fd);
     clnt_destroy(clnt);
+
+    if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0) {
+        perror("clock_gettime end");
+    }
+
+    double elapsed = (end_time.tv_sec - start_time.tv_sec) +
+                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+
+    printf("\n=== Client Stats ===\n");
+    printf("  Iterations attempted: %ld\n", iterations);
+    printf("  Block size: %zu bytes\n", block_size);
+    printf("  Elapsed time: %.3f seconds\n", elapsed);
+    printf("  Approx throughput: %.2f MB/s\n",
+           ((iterations * block_size) / (1024.0 * 1024.0)) / elapsed);
+
     return 0;
 }
