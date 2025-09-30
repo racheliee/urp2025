@@ -1,0 +1,8 @@
+# Ignore object files
+*.o
+
+# Ignore Executables
+baseline
+client
+server
+create_file
