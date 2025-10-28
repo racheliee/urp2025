@@ -59,8 +59,7 @@ for fs in "${file_sizes[@]}"; do
         echo "[SKIP] bc($bc) 가 bn($bn)으로 나누어떨어지지 않음"
         continue
       fi
-      it=$bc
-      #it=$(( bc / bn ))
+      it=$(( bc / bn ))
       (( it > 0 )) || { echo "[SKIP] iterations==0 (bc=$bc, bn=$bn)"; continue; }
 
       case_id="fs${fs}G_bc${bc}_bn${bn}_it${it}"
