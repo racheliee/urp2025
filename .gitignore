@@ -6,3 +6,9 @@ baseline
 client
 server
 create_file
+compare
+.run_all.sh.swp
+
+# logs
+logs/
+

@@ -19,30 +19,49 @@
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s [-b block_size] [-n iterations] <src_file> <dst_file>\n"
+        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l log]\n"
         "Options:\n"
-        "  -b block_size   Segment size in bytes (default: 4096)\n"
-        "  -n iterations   Number of random copies (default: 1000000)\n",
+        "  -b block_number # of block number. Block is 4096B. (default: 1)\n"
+        "  -n iterations   Number of random copies (default: 1000000)\n"
+        "  -s seed         Seed Number (default: -1)\n"
+        "  -l log          Show Log (default: false)\n"
+        "  -t test         Print result as csv form",
         prog);
 }
 
 int main(int argc, char *argv[]) {
     size_t block_size = DEFAULT_BLOCK_SIZE;
     long iterations = DEFAULT_ITERS;
+    long seed = time(NULL);
+    int log = 0;
+    int csv = 0;
 
     int opt;
-    while ((opt = getopt(argc, argv, "b:n:")) != -1) {
+    while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
-        case 'b':
-            block_size = strtoul(optarg, NULL, 10);
-            if (block_size % ALIGN != 0) {
-                fprintf(stderr, "Block size must be multiple of %d\n", ALIGN);
+        case 'b': {
+            int block_num = strtoul(optarg, NULL, 10);
+            if (block_num <= 0) {
+                fprintf(stderr, "Block size must be positive number.\n");
                 return 1;
             }
+            block_size = ALIGN * block_num;
             break;
+        }
         case 'n':
             iterations = strtol(optarg, NULL, 10);
             if (iterations <= 0) iterations = DEFAULT_ITERS;
+            break;
+        case 's': {
+            int s = strtol(optarg, NULL, 10);
+            if(s >= 0) seed = s;
+            break;
+        }
+        case 'l':
+            log = 1;
+            break;
+        case 't':
+            csv = 1;
             break;
         default:
             usage(argv[0]);
@@ -50,19 +69,28 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (optind + 2 > argc) {
+    if (optind + 1 > argc) {
         usage(argv[0]);
         return 1;
     }
 
-    const char *src_path = argv[optind];
-    const char *dst_path = argv[optind + 1];
+    srand(seed);
 
-    int src = open(src_path, O_RDONLY | O_DIRECT);
+    // Start timing
+    struct timespec start_time, end_time;
+    if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0) {
+        perror("clock_gettime start");
+        return 1;
+    }
+
+    const char *src_path = argv[optind];
+    // const char *dst_path = argv[optind + 1];
+
+    int src = open(src_path, O_RDWR  | O_DIRECT);
     if (src < 0) { perror("open src"); return 1; }
 
-    int dst = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);
-    if (dst < 0) { perror("open dst"); close(src); return 1; }
+    // int dst = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);
+    // if (dst < 0) { perror("open dst"); close(src); return 1; }
 
     // get source file size
     struct stat st;
@@ -80,70 +108,92 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    srand((unsigned)time(NULL));
-
-    // Start timing
-    struct timespec start_time, end_time;
-    if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0) {
-        perror("clock_gettime start");
-        free(buf); close(src); close(dst);
-        return 1;
-    }
-
-    printf("Starting %ld random copy operations (block size: %zu bytes)...\n", 
-           iterations, block_size);
-
     for (long i = 0; i < iterations; i++) {
+        if(log) {
+            if(i % 1000 == 0) {
+                struct timespec now_ts;
+                clock_gettime(CLOCK_MONOTONIC, &now_ts);
+
+                double elapsed = (now_ts.tv_sec - start_time.tv_sec)
+                                + (now_ts.tv_nsec - start_time.tv_nsec) / 1e9;
+
+                fprintf(stderr, "\rBlockCopy Baseline Test: %ld / %ld (%6.1f%% ) | %6.2fs", i, iterations, (double) i / iterations * 100, elapsed);
+            }
+        }
+
         // pick random aligned offset
         off_t max_blocks = filesize / block_size;
-        off_t block = rand() % max_blocks;
-        off_t offset = block * block_size;
+        off_t src_blk = rand() % max_blocks;
+        off_t dst_blk = rand() % max_blocks;
+        while(src_blk == dst_blk) dst_blk = rand() % max_blocks;
 
-        ssize_t r = pread(src, buf, block_size, offset);
+
+        off_t src_offset = src_blk * block_size;
+        off_t dst_offset = dst_blk * block_size;
+
+        ssize_t r = pread(src, buf, block_size, src_offset);
         if (r < 0) {
             perror("pread");
-            free(buf); close(src); close(dst);
+            free(buf); close(src);
             return 1;
         }
 
         ssize_t written = 0;
         while (written < r) {
-            ssize_t w = write(dst, (char*)buf + written, r - written);
+            ssize_t w = pwrite(src, (char*)buf + written, r - written, dst_offset + written);
             if (w < 0) {
-                perror("write");
-                free(buf); close(src); close(dst);
+                perror("pwrite");
+                free(buf); close(src);
                 return 1;
             }
             written += w;
         }
     }
 
+    if(log) {
+        struct timespec now_ts;
+        clock_gettime(CLOCK_MONOTONIC, &now_ts);
+
+        double elapsed = (now_ts.tv_sec - start_time.tv_sec)
+                        + (now_ts.tv_nsec - start_time.tv_nsec) / 1e9;
+
+        fprintf(stderr, "\rBlockCopy Baseline Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
+    }
+
+    free(buf);
+    close(src);
+
     // End timing
     if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0) {
         perror("clock_gettime end");
-        free(buf); close(src); close(dst);
+        free(buf); close(src);
         return 1;
     }
 
     // Calculate elapsed time
-    double elapsed = (end_time.tv_sec - start_time.tv_sec) + 
+    double elapsed = (end_time.tv_sec - start_time.tv_sec) +
                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-    
+
     // Calculate statistics
     long long total_bytes = (long long)iterations * block_size;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / elapsed;
-    double ops_per_sec = iterations / elapsed;
+    //double ops_per_sec = iterations / elapsed;
 
-    printf("\nResults:\n");
-    printf("  Total operations: %ld\n", iterations);
-    printf("  Block size: %zu bytes\n", block_size);
-    printf("  Total data copied: %.2f MB\n", total_bytes / (1024.0 * 1024.0));
+    if(csv) {
+        printf("%.3f\n", elapsed);
+        return 0;
+    }
+    printf("\n\n");
+    printf("---------- Baseline Results ----------\n");
+    printf("Iterations attempted: %ld\n", iterations);
+    printf("Block size: %zu bytes\n", block_size);
+    printf("Seed: %ld\n", seed);
+    printf("Log on: %s\n", log ? "true" : "false");
+    printf("Result: \n");
+    //printf("  Total data copied: %.2f MB\n", total_bytes / (1024.0 * 1024.0));
     printf("  Elapsed time: %.3f seconds\n", elapsed);
-    printf("  Throughput: %.2f MB/s\n", throughput_mbps);
-    printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
-
-    free(buf);
-    close(src);
-    close(dst);
+    printf("  Approx throughput: %.2f MB/s\n", throughput_mbps);
+    //printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
+    printf("------------------------------------------\n");
     return 0;
 }
