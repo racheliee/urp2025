@@ -173,11 +173,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    int *res = res_time_1(NULL, clnt);
-    if (res == NULL) {
-        fprintf(stderr, "RPC reset server time failed\n");
-        clnt_destroy(clnt);
-        exit(1);
+    {
+        int *res = res_time_1(NULL, clnt);
+        if (res == NULL) {
+            fprintf(stderr, "RPC reset server time failed\n");
+            clnt_destroy(clnt);
+            exit(1);
+        }
     }
 
     // Open file
