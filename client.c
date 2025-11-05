@@ -222,7 +222,7 @@ int main(int argc, char *argv[]) {
             for(int j = 0; j < src_pba_cnt; ++j) {
                 fprintf(stderr, "src_pba[%d]: %lu, len: %lu\n", j, src_pba[j].pba, src_pba[j].len);
             }
-            for(int j = 0; j < src_pba_cnt; ++j) {
+            for(int j = 0; j < dst_pba_cnt; ++j) {
                 fprintf(stderr, "dst_pba[%d]: %lu, len: %lu\n", j, dst_pba[j].pba, dst_pba[j].len);
             }
             fprintf(stderr, "\n");
