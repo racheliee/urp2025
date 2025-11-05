@@ -208,7 +208,7 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
 
     free(buf);
-    close(path);
+    close(fd);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
     t_end1 = t_total1;
@@ -236,7 +236,7 @@ int main(int argc, char *argv[]) {
 
     if(csv) {
         // block_num, iteration, # of block_copies, file_size, read Time, write Time, Prep Time, End Time, I/O time, Total time
-        printf("%s,%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             block_size/ALIGN, 
             iterations, 
             block_size/ALIGN * iterations, 

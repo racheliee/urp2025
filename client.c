@@ -189,11 +189,11 @@ int main(int argc, char *argv[]) {
     off_t filesize = st.st_size;
 
     // aligned memory allocation in buf
-    void *buf;
+    /*void *buf;
     if (posix_memalign(&buf, ALIGN, block_size) != 0) {
         perror("posix_memalign");
         exit(1);
-    }
+    }*/
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
 
@@ -228,7 +228,7 @@ int main(int argc, char *argv[]) {
         size_t src_pba_cnt, dst_pba_cnt;
 
         /************ Fiemap0 ************/
-        uint64_t fiemap_ns0, fiemap_ns1, rpc_ns;
+        uint64_t fiemap_ns0, fiemap_ns1;
         if (get_pba(fd, src_logical, block_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
             continue;
         /************ Fiemap0 End ************/
@@ -295,7 +295,7 @@ int main(int argc, char *argv[]) {
     struct timespec t_end0, t_end1;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
 
-    free(buf);
+    //free(buf);
     close(fd);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
