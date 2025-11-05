@@ -26,8 +26,12 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
          + (uint64_t)(b.tv_nsec - a.tv_nsec);
 }
 
+static inline double get_elapsed(uint64_t ns) {
+    return double(ns) / 1e9;
+}
+
 /* helper to get physical block address from logical offset */
-static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* elapsed_time) {
+static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
     struct timespec t_before, t_after;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_before);
 
@@ -79,7 +83,7 @@ exit:
     free(fiemap);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_after);
-    *elapsed_time += (u_quad_t)ns_diff(t_before, t_after);
+    *fiemap_ns = (uint64_t)ns_diff(t_before, t_after);
     return result;
 }
 
@@ -94,6 +98,12 @@ static void usage(const char *prog) {
         "  -t test         Print result as csv form",
         prog);
 }
+
+// static _Atomic uint64_t g_fiemap_ns  = 0;
+// static _Atomic uint64_t g_rpc_ns = 0;
+
+static uint64_t g_fiemap_ns = 0;
+static uint64_t g_rpc_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -144,13 +154,17 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    srand(seed);
+/************ Time Check Start ************/
 
-    // check time
-    struct timespec start_time, end_time;
-    if (clock_gettime(CLOCK_MONOTONIC, &start_time) != 0) {
-        perror("clock_gettime start");
-    }
+    struct timespec t_total0, t_total1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
+
+    /************ Prepare Stage ************/
+
+    struct timespec t_prep0, t_prep1;
+    t_prep0 = t_total0;
+
+    srand(seed);
 
     // RPC connect
     CLIENT *clnt = clnt_create(server_host, BLOCKCOPY_PROG, BLOCKCOPY_VERS, "tcp");
@@ -181,17 +195,19 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    u_quad_t fiemap_time = 0, rpc_time = 0;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
+
+    /************ Prepare Stage End ************/
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
         if(log) {
             if(i % 1000 == 0) {
                 struct timespec now_ts;
-                clock_gettime(CLOCK_MONOTONIC, &now_ts);
+                clock_gettime(CLOCK_MONOTONIC_RAW, &now_ts);
 
-                double elapsed = (now_ts.tv_sec - start_time.tv_sec)
-                                + (now_ts.tv_nsec - start_time.tv_nsec) / 1e9;
+                double elapsed = (now_ts.tv_sec - t_total0.tv_sec)
+                                + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
                 fprintf(stderr, "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", i, iterations, (double) i / iterations * 100, elapsed);
             }
@@ -210,19 +226,25 @@ int main(int argc, char *argv[]) {
         pba_seg* src_pba;
         pba_seg* dst_pba;
         size_t src_pba_cnt, dst_pba_cnt;
-        if (get_pba(fd, src_logical, block_size, &src_pba, &src_pba_cnt, &fiemap_time) != 0)
-            continue;
 
-        if (get_pba(fd, dst_logical, block_size, &dst_pba, &dst_pba_cnt, &fiemap_time) != 0)
+        /************ Fiemap0 ************/
+        uint64_t fiemap_ns0, fiemap_ns1, rpc_ns;
+        if (get_pba(fd, src_logical, block_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
             continue;
+        /************ Fiemap0 End ************/
+
+        /************ Fiemap1 ************/
+        if (get_pba(fd, dst_logical, block_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
+            continue;
+        /************ Fiemap1 End ************/
         
-        if(src_pba_cnt != 1 || dst_pba_cnt != 1) {
+        if(src_pba_cnt != dst_pba_cnt) {
             fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-            fprintf(stderr, "Number of extents are not 1. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
+            fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
             for(int j = 0; j < src_pba_cnt; ++j) {
                 fprintf(stderr, "src_pba[%d]: %lu, len: %lu\n", j, src_pba[j].pba, src_pba[j].len);
             }
-            for(int j = 0; j < src_pba_cnt; ++j) {
+            for(int j = 0; j < dst_pba_cnt; ++j) {
                 fprintf(stderr, "dst_pba[%d]: %lu, len: %lu\n", j, dst_pba[j].pba, dst_pba[j].len);
             }
             fprintf(stderr, "\n");
@@ -233,59 +255,101 @@ int main(int argc, char *argv[]) {
         params.pba_dst = dst_pba[0].pba;
         params.nbytes = src_pba[0].len;
 
-        struct timespec t_before, t_after;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_before);
-        u_quad_t *res = write_pba_1(&params, clnt);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_after);
+        struct timespec t_rpc0, t_rpc1;
 
-        if (res == NULL || *res == (u_quad_t)-1) {
+        /************ RPC ************/
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
+        int *res = write_pba_1(&params, clnt);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
+
+        /************ RPC End ************/
+
+        if (res == NULL || *res == -1) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
             break;
         }
+        
 
-        rpc_time += ((u_quad_t)ns_diff(t_before, t_after) - *res);
+        uint64_t rpc_ns = ns_diff(t_rpc0, t_rpc1);
+        // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns0, memory_order_relaxed);
+        // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns1, memory_order_relaxed);
+        // atomic_fetch_add_explicit(&g_rpc_ns, rpc_ns, memory_order_relaxed);
+
+        g_fiemap_ns += fiemap_ns0 + fiemap_ns1;
+        g_rpc_ns += rpc_ns;
     }
 
     if(log) {
         struct timespec now_ts;
-        clock_gettime(CLOCK_MONOTONIC, &now_ts);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &now_ts);
 
-        double elapsed = (now_ts.tv_sec - start_time.tv_sec)
-                        + (now_ts.tv_nsec - start_time.tv_nsec) / 1e9;
+        double elapsed = (now_ts.tv_sec - t_total0.tv_sec)
+                        + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
         fprintf(stderr, "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
     }
 
+    /************ End Stage ************/
+
+    struct timespec t_end0, t_end1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
+
     free(buf);
     close(fd);
-    clnt_destroy(clnt);
 
-    if (clock_gettime(CLOCK_MONOTONIC, &end_time) != 0) {
-        perror("clock_gettime end");
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
+    t_end1 = t_total1;
+
+    /************ End Stage End ************/
+
+/************ Time Check End ************/
+    
+    // Get server time
+    get_server_ios *res = get_time_1(NULL, clnt);
+    if (res == NULL) {
+        fprintf(stderr, "RPC get server time failed\n");
+        clnt_destroy(clnt);
+        exit(1);
     }
+    clnt_destroy(clnt);
+    uint64_t server_read_ns = res->server_read_time;
+    uint64_t server_write_ns = res->server_write_time;
+    uint64_t server_other_ns = res->server_other_time;
 
     // Calculate elapsed time
-    u_quad_t elapsed_ns = (u_quad_t)ns_diff(start_time, end_time);
-    double elapsed = (double)elapsed_ns / 1e9;
-    double elapsed_fiemap = (double)fiemap_time / 1e9;
-    double elapsed_rpc = (double)rpc_time / 1e9;
-    double elapsed_io = elapsed - elapsed_fiemap - elapsed_rpc;
+    uint64_t total_ns = ns_diff(t_total0, t_total1);
+    uint64_t prep_ns = ns_diff(t_prep0, t_prep1);
+    uint64_t end_ns = ns_diff(t_end0, t_end1);
+    uint64_t fiemap_ns = g_fiemap_ns;
+    uint64_t rpc_ns = g_rpc_ns - server_read_ns - server_write_ns - server_other_ns;
+    uint64_t io_ns = total_ns - prep_ns - end_ns - fiemap_ns - g_rpc_ns;
+
+    if(prep_ns + end_ns + fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
+        fprintf(stderr, "Time caculation failed. Do not match with total_ns\n");
+        exit(1);
+    }
 
     // Calculate statistics
     long long total_bytes = (long long)iterations * block_size;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / elapsed;
 
     if(csv) {
-        // block_num, iteration, # of block_copies, file_size, Fiemap time, RPC time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,", 
+        // block_num, iteration, # of block_copies, file_size, Server Read Time, Server Write Time, Server Other Time, Prep Time, End Time, Fiemap time, RPC time, I/O time, Total time
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             block_size/ALIGN, 
             iterations, 
             block_size/ALIGN * iterations, 
             (double)filesize / (1024.0 * 1024.0 * 1024.0),
-            elapsed_fiemap,
-            elapsed_rpc,
-            elapsed_io,
-            elapsed
+            get_elapsed(server_read_ns),
+            get_elapsed(server_write_ns),
+            get_elapsed(server_other_ns),
+            get_elapsed(prep_ns),
+            get_elapsed(end_ns),
+            get_elapsed(fiemap_ns),
+            get_elapsed(rpc_ns),
+            get_elapsed(io_ns),
+            get_elapsed(total_ns)
         );
         return 0;
     }
@@ -295,11 +359,27 @@ int main(int argc, char *argv[]) {
     printf("Block size: %zu bytes\n", block_size);
     printf("Seed: %ld\n", seed);
     printf("Log on: %s\n", log ? "true" : "false");
-    printf("Result: \n");
-    printf("  Fiemap Elapsed time: %.3f seconds\n", elapsed_fiemap);
-    printf("  RPC Elapsed time: %.3f seconds\n", elapsed_rpc);
-    printf("  I/O Elapsed time: %.3f seconds\n", elapsed_io);
-    printf("  Total Elapsed time: %.3f seconds\n", elapsed);
+    printf("\n");
+    printf("Server Result: \n");
+    printf("  Read Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns));
+    printf("  Write Elapsed time: %.3f seconds\n", get_elapsed(server_write_ns));
+    printf("  Other Elapsed time: %.3f seconds\n", get_elapsed(server_other_ns));
+    printf("\n");
+    printf("Client Main Result: \n");
+    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(fiemap_ns));
+    printf("  RPC Elapsed time: %.3f seconds\n", get_elapsed(rpc_ns));
+    printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns));
+    printf("\n");
+    printf("Client Other Result: \n");
+    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(prep_ns));
+    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(end_ns));
+    printf("\n");
+    printf("Summary: \n");
+    printf("  Server Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns));
+    printf("  Client Main time: %.3f seconds\n", get_elapsed(fiemap_ns + rpc_ns + io_ns));
+    printf("  Client Other time: %.3f seconds\n", get_elapsed(prep_ns + end_ns));
+    printf("\n");
+    printf("  Total Elapsed time: %.3f seconds\n", get_elapsed(total_ns));
     printf("  Approx throughput: %.2f MB/s\n", throughput_mbps);
     //printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
     printf("------------------------------------------\n");
