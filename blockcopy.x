@@ -16,5 +16,6 @@ program BLOCKCOPY_PROG {
     version BLOCKCOPY_VERS {
         int WRITE_PBA(pba_write_params) = 1;
         get_server_ios GET_TIME(void) = 2;
+        void RESET_TIME(void) = 3;
     } = 1;
 } = 0x34567890;

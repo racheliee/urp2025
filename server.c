@@ -61,11 +61,13 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     if (r == -1) { 
         perror("pread");
         result = -1;
+        free(buf);
         goto exit;
     }
     if ((size_t)r != (size_t)params->nbytes) {
         fprintf(stderr, "read only segments of nbytes: %lu expected, but only %lu\n", (size_t)params->nbytes, (size_t)r);
         result = -1;
+        free(buf);
         goto exit;
     }
 
@@ -83,21 +85,20 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     if(w == -1) {
         perror("pwrite");
         result = -1;
+        free(buf);
         goto exit;
     }
     if (w < params->nbytes) {
         fprintf(stderr, "written only segments of nbytes: %lu expected, but only %lu\n", (size_t)params->nbytes, (size_t)w);
         result = -1;
+        free(buf);
         goto exit;
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
+    free(buf);
 
     /************ Write End ************/
-
-/************ Time Check End ************/
-
-    t_total1 = t_write1;
 
     uint64_t read_ns = ns_diff(t_read0, t_read1);
     uint64_t write_ns = ns_diff(t_write0, t_write1);
@@ -113,9 +114,10 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     g_write_ns += write_ns;
     g_other_ns += other_ns;
 
-exit:
-    free(buf);
+    t_total1 = t_write1;
+/************ Time Check End ************/
 
+exit:
     return &result;
 }
 
@@ -130,4 +132,14 @@ get_server_ios *get_time_1_svc(void *argp, struct svc_req *rqstp) {
     out.server_other_time = g_other_ns;
 
     return &out;
+}
+
+int *reset_time_1_svc(void *argp, struct svc_req *rqstp) {
+    int result = 0;
+
+    g_read_ns = g_write_ns = g_other_ns = 0;
+
+    fprintf(stdout, "server time reset complete.");
+
+    return &result;
 }

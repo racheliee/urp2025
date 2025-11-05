@@ -95,7 +95,7 @@ static void usage(const char *prog) {
         "  -n iterations   Number of random copies (default: 1000000)\n"
         "  -s seed         Seed Number (default: -1)\n"
         "  -l log          Show Log (default: false)\n"
-        "  -t test         Print result as csv form",
+        "  -t test         Print result as csv form\n",
         prog);
 }
 
@@ -170,6 +170,13 @@ int main(int argc, char *argv[]) {
     CLIENT *clnt = clnt_create(server_host, BLOCKCOPY_PROG, BLOCKCOPY_VERS, "tcp");
     if (!clnt) {
         clnt_pcreateerror(server_host);
+        exit(1);
+    }
+
+    int *res = res_time_1(NULL, clnt);
+    if (res == NULL) {
+        fprintf(stderr, "RPC reset server time failed\n");
+        clnt_destroy(clnt);
         exit(1);
     }
 
@@ -264,6 +271,8 @@ int main(int argc, char *argv[]) {
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
+
+        free(src_pba); free(dst_pba);
 
         if (res == NULL || *res == -1) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);

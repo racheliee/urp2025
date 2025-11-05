@@ -26,7 +26,7 @@ static void usage(const char *prog) {
         "  -n iterations   Number of random copies (default: 1000000)\n"
         "  -s seed         Seed Number (default: -1)\n"
         "  -l log          Show Log (default: false)\n"
-        "  -t test         Print result as csv form",
+        "  -t test         Print result as csv form\n",
         prog);
 }
 
