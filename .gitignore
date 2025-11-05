@@ -12,3 +12,5 @@ compare
 # logs
 logs/
 
+# test results
+*.csv

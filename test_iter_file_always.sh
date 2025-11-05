@@ -14,7 +14,7 @@ DATE_DIR="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="$LOG_DIR/$DATE_DIR"
 mkdir -p "$RUN_DIR"
 
-BASELINE_LOG_FILE="$RUN_DIR/blockcopy.log"
+BASELINE_LOG_FILE="$RUN_DIR/baseline.log"
 RPC_LOG_FILE="$RUN_DIR/rpc.log"
 echo "로그 디렉토리: $RUN_DIR"
 
@@ -38,6 +38,7 @@ flush_caches() {
   sudo sync
   if [[ "$DROP_CACHES" == "1" ]]; then
     echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
+    echo "Cache flushed"
   fi
 }
 
