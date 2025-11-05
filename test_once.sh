@@ -79,7 +79,7 @@ for fs in "${file_sizes[@]}"; do
         2> >(stdbuf -eL tee -a "$LOG_FILE" >&2)
       flush_caches
 
-      (4) 비교
+      # (4) 비교
       echo "[compare] sudo ./compare $a $b"
       sudo ./compare "$a" "$b"
       flush_caches

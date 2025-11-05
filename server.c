@@ -138,7 +138,7 @@ void *reset_time_1_svc(void *argp, struct svc_req *rqstp) {
     static char dummy;
     g_read_ns = g_write_ns = g_other_ns = 0;
 
-    fprintf(stdout, "server time reset complete.");
+    fprintf(stdout, "server time reset complete.\n");
     fflush(stdout);
     return (void *)&dummy;
 }
