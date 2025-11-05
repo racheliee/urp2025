@@ -9,8 +9,14 @@ seed=-1
 
 LOG_DIR="${LOG_DIR:-./logs}"
 mkdir -p "$LOG_DIR"
-LOG_FILE="${LOG_FILE:-$LOG_DIR/$(date +%Y%m%d_%H%M%S)_blockcopy.log}"
-echo "로그 파일: $LOG_FILE"
+
+DATE_DIR="$(date +%Y%m%d_%H%M%S)"
+RUN_DIR="$LOG_DIR/$DATE_DIR"
+mkdir -p "$RUN_DIR"
+
+BASELINE_LOG_FILE="$RUN_DIR/blockcopy.log"
+RPC_LOG_FILE="$RUN_DIR/rpc.log"
+echo "로그 디렉토리: $RUN_DIR"
 
 mnt="/mnt/nvme1"
 a="$mnt/a.txt"
@@ -40,7 +46,8 @@ echo "=== 테스트 시작 ==="
 echo "params: seed=$seed, block_nums=${block_nums[*]}, block_copies=${block_copies[*]}, file_sizes=${file_sizes[*]}"
 echo
 
-echo "block_num,iteration,num_block_copies,file_size,fiemap_time,rpc_time,io_time,client_total_time,baseline_time" >> "$LOG_FILE"
+echo "block_num,iteration,num_block_copies,file_size,read_ns,write_ns,prep_ns,end_ns,io_ns,total_time" >> "$BASELINE_LOG_FILE"
+echo "block_num,iteration,num_block_copies,file_size,server_read_ns,server_write_ns,server_other_ns,prep_ns,end_ns,fiemap_ns,rpc_ns,io_ns,total_time" >> "$RPC_LOG_FILE"
 
 # (1) 파일 생성 및 복제(초기화)
 fs=${file_sizes[0]}
@@ -73,15 +80,15 @@ while true; do
                 # (2) client: a.txt
                 echo "[client] sudo ./client eternity2 $a -n $it -b $bn -s $seed"
                 sudo ./client eternity2 "$a" -n "$it" -b "$bn" -s "$seed" -t \
-                    > >(stdbuf -oL tee -a "$LOG_FILE" >/dev/null) \
-                    2> >(stdbuf -eL tee -a "$LOG_FILE" >&2)
+                    > >(stdbuf -oL tee -a "$RPC_LOG_FILE" >/dev/null) \
+                    2> >(stdbuf -eL tee -a "$RPC_LOG_FILE" >&2)
                 flush_caches
 
                 # (3) baseline: b.txt
                 echo "[baseline] sudo ./baseline $b -n $it -b $bn -s $seed"
                 sudo ./baseline "$b" -n "$it" -b "$bn" -s "$seed" -t \
-                    > >(stdbuf -oL tee -a "$LOG_FILE" >/dev/null) \
-                    2> >(stdbuf -eL tee -a "$LOG_FILE" >&2)
+                    > >(stdbuf -oL tee -a "$BASELINE_LOG_FILE" >/dev/null) \
+                    2> >(stdbuf -eL tee -a "$BASELINE_LOG_FILE" >&2)
                 flush_caches
 
                 # (4) 비교
