@@ -79,10 +79,10 @@ for fs in "${file_sizes[@]}"; do
         2> >(stdbuf -eL tee -a "$LOG_FILE" >&2)
       flush_caches
 
-      # (4) 비교
-      #echo "[compare] sudo ./compare $a $b"
-      #sudo ./compare "$a" "$b"
-    #   flush_caches
+      (4) 비교
+      echo "[compare] sudo ./compare $a $b"
+      sudo ./compare "$a" "$b"
+      flush_caches
 
       echo "----- END   $case_id -----"
       echo
@@ -91,4 +91,3 @@ for fs in "${file_sizes[@]}"; do
 done
 
 echo "=== 모든 조합 처리 완료 ==="
-
