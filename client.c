@@ -174,7 +174,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-        int *res = res_time_1(NULL, clnt);
+        int *res = reset_time_1(NULL, clnt);
         if (res == NULL) {
             fprintf(stderr, "RPC reset server time failed\n");
             clnt_destroy(clnt);
