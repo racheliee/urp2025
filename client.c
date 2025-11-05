@@ -27,7 +27,7 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return double(ns) / 1e9;
+    return (double) ns / 1e9;
 }
 
 /* helper to get physical block address from logical offset */
@@ -89,7 +89,7 @@ exit:
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l log]\n"
+        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l] [-t]\n"
         "Options:\n"
         "  -b block_number # of block number. Block is 4096B. (default: 1)\n"
         "  -n iterations   Number of random copies (default: 1000000)\n"
@@ -100,10 +100,10 @@ static void usage(const char *prog) {
 }
 
 // static _Atomic uint64_t g_fiemap_ns  = 0;
-// static _Atomic uint64_t g_rpc_ns = 0;
+// static _Atomic uint64_t g_rpc_total_ns = 0;
 
 static uint64_t g_fiemap_ns = 0;
-static uint64_t g_rpc_ns = 0;
+static uint64_t g_rpc_total_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
     // Open file
     int fd = open(path, O_RDONLY | O_DIRECT);
     if (fd < 0) {
-        perror("open src");
+        perror("open file");
         exit(1);
     }
 
@@ -271,13 +271,13 @@ int main(int argc, char *argv[]) {
         }
         
 
-        uint64_t rpc_ns = ns_diff(t_rpc0, t_rpc1);
+        uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns0, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns1, memory_order_relaxed);
-        // atomic_fetch_add_explicit(&g_rpc_ns, rpc_ns, memory_order_relaxed);
+        // atomic_fetch_add_explicit(&g_rpc_total_ns, rpc_total_ns, memory_order_relaxed);
 
         g_fiemap_ns += fiemap_ns0 + fiemap_ns1;
-        g_rpc_ns += rpc_ns;
+        g_rpc_total_ns += rpc_total_ns;
     }
 
     if(log) {
@@ -322,17 +322,17 @@ int main(int argc, char *argv[]) {
     uint64_t prep_ns = ns_diff(t_prep0, t_prep1);
     uint64_t end_ns = ns_diff(t_end0, t_end1);
     uint64_t fiemap_ns = g_fiemap_ns;
-    uint64_t rpc_ns = g_rpc_ns - server_read_ns - server_write_ns - server_other_ns;
-    uint64_t io_ns = total_ns - prep_ns - end_ns - fiemap_ns - g_rpc_ns;
+    uint64_t rpc_ns = g_rpc_total_ns - server_read_ns - server_write_ns - server_other_ns;
+    uint64_t io_ns = total_ns - prep_ns - end_ns - fiemap_ns - g_rpc_total_ns;
 
     if(prep_ns + end_ns + fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
-        fprintf(stderr, "Time caculation failed. Do not match with total_ns\n");
+        fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
         exit(1);
     }
 
     // Calculate statistics
     long long total_bytes = (long long)iterations * block_size;
-    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / elapsed;
+    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / get_elapsed(total_ns);
 
     if(csv) {
         // block_num, iteration, # of block_copies, file_size, Server Read Time, Server Write Time, Server Other Time, Prep Time, End Time, Fiemap time, RPC time, I/O time, Total time
@@ -371,8 +371,8 @@ int main(int argc, char *argv[]) {
     printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns));
     printf("\n");
     printf("Client Other Result: \n");
-    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(prep_ns));
-    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(end_ns));
+    printf("  Prepare Elapsed time: %.3f seconds\n", get_elapsed(prep_ns));
+    printf("  End Elapsed time: %.3f seconds\n", get_elapsed(end_ns));
     printf("\n");
     printf("Summary: \n");
     printf("  Server Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns));
