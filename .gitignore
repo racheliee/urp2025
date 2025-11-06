@@ -8,7 +8,13 @@ server
 create_file
 compare
 .run_all.sh.swp
+blockcopy.h
+blockcopy_clnt.c
+blockcopy_svc.c
+blockcopy_xdr.c
 
 # logs
 logs/
 
+# test results
+*.csv
