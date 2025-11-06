@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.cpp": "cpp",
+        "stdatomic.h": "c",
+        "cstdint": "c"
+    }
+}
