@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fiemap.h>
@@ -174,8 +173,9 @@ int main(int argc, char *argv[]) {
     }
 
     {
-        void *res = reset_time_1(NULL, clnt);
-        if (res == NULL) {
+        enum clnt_stat rst;
+        rst = reset_time_1(NULL, NULL, clnt);
+        if (rst != RPC_SUCCESS) {
             fprintf(stderr, "RPC reset server time failed\n");
             clnt_destroy(clnt);
             exit(1);
@@ -264,19 +264,21 @@ int main(int argc, char *argv[]) {
         params.pba_dst = dst_pba[0].pba;
         params.nbytes = src_pba[0].len;
 
+        enum clnt_stat rst;
+        int res = 0;
         struct timespec t_rpc0, t_rpc1;
 
         /************ RPC ************/
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        int *res = write_pba_1(&params, clnt);
+        rst = write_pba_1(&params, &res, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
 
         free(src_pba); free(dst_pba);
 
-        if (res == NULL || *res == -1) {
+        if (rst != RPC_SUCCESS || res == -1) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
             break;
         }
@@ -317,16 +319,17 @@ int main(int argc, char *argv[]) {
 /************ Time Check End ************/
     
     // Get server time
-    get_server_ios *res = get_time_1(NULL, clnt);
-    if (res == NULL) {
+    get_server_ios res;
+    enum clnt_stat rst = get_time_1(NULL, &res, clnt);
+    if (rst != RPC_SUCCESS) {
         fprintf(stderr, "RPC get server time failed\n");
         clnt_destroy(clnt);
         exit(1);
     }
     clnt_destroy(clnt);
-    uint64_t server_read_ns = res->server_read_time;
-    uint64_t server_write_ns = res->server_write_time;
-    uint64_t server_other_ns = res->server_other_time;
+    uint64_t server_read_ns = res.server_read_time;
+    uint64_t server_write_ns = res.server_write_time;
+    uint64_t server_other_ns = res.server_other_time;
 
     // Calculate elapsed time
     uint64_t total_ns = ns_diff(t_total0, t_total1);

@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include "server.h"
 #include "blockcopy.h"
 #include <errno.h>
@@ -8,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
-#include <stdatomic.h>
+#include <tirpc/rpc/rpc.h>
 
 #define DEVICE_BLOCK_SIZE 512
 
@@ -25,14 +24,15 @@ static uint64_t g_read_ns = 0;
 static uint64_t g_write_ns = 0;
 static uint64_t g_other_ns = 0;
 
-int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
+bool_t write_pba_1_svc(pba_write_params *params, int *result, struct svc_req *rqstp) {
     
 /************ Time Check Start ************/
+    (void) rqstp;
 
     struct timespec t_total0, t_total1;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
-    static int result = 0;
+    *result = -1;
     
     static int fd = -1;
     if (fd == -1) {
@@ -40,16 +40,14 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
 
         if (fd < 0) {
             perror("open device");
-            result = -1;
-            return &result;
+            goto exit;
         }
     }
 
     void *buf;
     if (posix_memalign(&buf, ALIGN, params->nbytes) != 0) {
         fprintf(stderr, "posix_memalign failed\n");
-        result = -1;
-        return &result;
+        goto exit;
     }
 
     /************ Read ************/
@@ -60,13 +58,11 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     ssize_t r = pread(fd, buf, params->nbytes, params->pba_src);
     if (r == -1) { 
         perror("pread");
-        result = -1;
         free(buf);
         goto exit;
     }
     if ((size_t)r != (size_t)params->nbytes) {
         fprintf(stderr, "read only segments of nbytes: %lu expected, but only %lu\n", (size_t)params->nbytes, (size_t)r);
-        result = -1;
         free(buf);
         goto exit;
     }
@@ -84,13 +80,11 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
 
     if(w == -1) {
         perror("pwrite");
-        result = -1;
         free(buf);
         goto exit;
     }
     if (w < params->nbytes) {
         fprintf(stderr, "written only segments of nbytes: %lu expected, but only %lu\n", (size_t)params->nbytes, (size_t)w);
-        result = -1;
         free(buf);
         goto exit;
     }
@@ -115,30 +109,42 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     g_other_ns += other_ns;
 
     t_total1 = t_write1;
+
+    *result = 0;
 /************ Time Check End ************/
 
 exit:
-    return &result;
+    return TRUE;
 }
 
-get_server_ios *get_time_1_svc(void *argp, struct svc_req *rqstp) {
-    static get_server_ios out;
+bool_t get_time_1_svc(void *argp, struct get_server_ios *result, struct svc_req *rqstp) {
+    (void)argp; (void)rqstp;
     // out.server_read_time = atomic_load_explicit(&g_read_ns, memory_order_relaxed);
     // out.server_write_time = atomic_load_explicit(&g_write_ns, memory_order_relaxed);
     // out.server_other_time = atomic_load_explicit(&g_other_ns, memory_order_relaxed);
 
-    out.server_read_time = g_read_ns;
-    out.server_write_time = g_write_ns;
-    out.server_other_time = g_other_ns;
+    result->server_read_time = g_read_ns;
+    result->server_write_time = g_write_ns;
+    result->server_other_time = g_other_ns;
 
-    return &out;
+    return TRUE;
 }
 
-void *reset_time_1_svc(void *argp, struct svc_req *rqstp) {
-    static char dummy;
+bool_t reset_time_1_svc(void *argp, void *result, struct svc_req *rqstp) {
+    (void)argp; (void)result; (void)rqstp;
     g_read_ns = g_write_ns = g_other_ns = 0;
 
     fprintf(stdout, "server time reset complete.\n");
     fflush(stdout);
-    return (void *)&dummy;
+    return TRUE;
+}
+
+
+bool_t blockcopy_prog_1_freeresult(SVCXPRT *transp, xdrproc_t xdr_result, caddr_t result)
+{
+    (void)transp;
+    (void)xdr_result;
+    (void)result;
+    
+    return TRUE;
 }

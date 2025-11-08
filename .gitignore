@@ -18,3 +18,7 @@ logs/
 
 # test results
 *.csv
+
+.vscode/
+charts/
+results/

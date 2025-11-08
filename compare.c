@@ -6,7 +6,6 @@
 // - EOF 길이 차이도 바이트 단위로 보고
 // - 위치 출력은 1-based
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
