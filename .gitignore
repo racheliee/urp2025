@@ -5,6 +5,7 @@
 baseline
 client
 server
+server_mt
 create_file
 compare
 .run_all.sh.swp
