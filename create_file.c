@@ -235,13 +235,13 @@ int main(int argc, char** argv) {
             humanize((double)target,  hTarget,  sizeof(hTarget),  "B");
             humanize(speed,           hSpeed,   sizeof(hSpeed),   "B/s");
 
-            // \r to overwrite the current line
+            // \r 로 진행 상태 덮어쓰기
             fprintf(stdout, "\r%6.1f%%  %12s / %12s  |  %10s  ETA: %5s",
                 pct, hWritten, hTarget, hSpeed,
                 (eta > 0.0) ? (snprintf(NULL, 0, "%ds", (int)eta), "") : ""
             );
             if (eta > 0.0) {
-                // print the actual ETA 
+                // 위에서 ETA 문자열 길이를 계산만 했으므로 실제 출력:
                 fprintf(stdout, "\r%6.1f%%  %12s / %12s  |  %10s  ETA: %5ds",
                         pct, hWritten, hTarget, hSpeed, (int)eta);
             }
@@ -264,3 +264,4 @@ int main(int argc, char** argv) {
     free(buf);
     return 0;
 }
+
