@@ -1,3 +1,7 @@
+//todo
+//1. change arg (one single file -> directory)
+//2. modify shell file (create num_file files in directory)
+
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
@@ -12,6 +16,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <omp.h>
 
 #include "blockcopy.h"
 #include "client.h"
@@ -89,7 +94,7 @@ exit:
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l] [-t]\n"
+        "Usage: %s <server_eternity> <directory_path> [-b block_size] [-n iterations] [-s seed] [-l] [-t]\n"
         "Options:\n"
         "  -b block_number # of block number. Block is 4096B. (default: 1)\n"
         "  -n iterations   Number of random copies (default: 1000000)\n"
