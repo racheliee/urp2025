@@ -104,6 +104,7 @@ static void usage(const char *prog) {
 
 static uint64_t g_fiemap_ns = 0;
 static uint64_t g_rpc_total_ns = 0;
+static uint64_t g_iter_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -197,6 +198,10 @@ int main(int argc, char *argv[]) {
     }*/
     
     /************ Prepare Stage End ************/
+
+    //테스트 시작 전 시간 측정 (log용)
+    struct timespec t_total0;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
@@ -326,7 +331,7 @@ int main(int argc, char *argv[]) {
     uint64_t total_ns = g_iter_ns; //total_ns를 iteration 자체에만 걸린 시간으로 바꿈!! end, prep 제외
     uint64_t fiemap_ns = g_fiemap_ns; //fiemap 두 번 걸린 시간 합
     uint64_t rpc_ns = g_rpc_total_ns - server_read_ns - server_write_ns - server_other_ns; //rpc 자체에만 드는 오버헤드
-    uint64_t io_ns = total_ns - fiemap_ns - g_rpc_total_ns;
+    uint64_t io_ns = total_ns - fiemap_ns - rpc_ns;
 	
     // 계산 오류 핸들러.
     if(fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
