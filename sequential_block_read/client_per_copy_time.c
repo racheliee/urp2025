@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
             get_elapsed(fiemap_ns),
             get_elapsed(rpc_ns),
             get_elapsed(io_ns),
-            get_elapsed(total_ns);
+            get_elapsed(total_ns)
         );
         return 0;
     }
