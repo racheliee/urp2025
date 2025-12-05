@@ -37,6 +37,7 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
 }
 
 void *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
+    static char dummy;
     return (void *)&dummy;
 }
 

@@ -1,7 +1,7 @@
 RPCGEN = rpcgen
 CC = gcc
 CFLAGS = -O2 -Wall
-TARGETS = client server baseline create_file
+TARGETS = client server 
 
 all: $(TARGETS)
 
