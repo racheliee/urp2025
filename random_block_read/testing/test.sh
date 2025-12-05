@@ -33,7 +33,7 @@ echo ""
 
 # ----- Test File Paths -----
 mnt="/mnt/nvme1"
-test_file="$mnt/random_test.txt"
+test_file="$mnt/1gb.txt"
 
 # ----- Binary Checks -----
 need_cmds=(sudo sync)
