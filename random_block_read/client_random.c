@@ -105,7 +105,7 @@ static void usage(const char *prog) {
         "  -s seed            Random seed (default: current time)\n"
         "  -l                 Show progress log\n"
         "  -t                 Output results in CSV format\n"
-        "  -batch size        Batch size for RPC (default: 100, max: 1024)\n",
+        "  -B (atch) size        Batch size for RPC (default: 100, max: 1024)\n",
         prog);
 }
 
@@ -156,21 +156,16 @@ int main(int argc, char *argv[]) {
         case 't':
             csv = 1;
             break;
-        default:
-            usage(argv[0]);
-            return 1;
-        }
-    }
-
-    // Handle -batch option separately
-    for (int i = 3; i < argc - 1; i++) {
-        if (strcmp(argv[i], "-batch") == 0) {
+        case 'B':
             batch_size = atoi(argv[i + 1]);
             if (batch_size <= 0 || batch_size > MAX_BATCH) {
                 fprintf(stderr, "Batch size must be between 1 and %d\n", MAX_BATCH);
                 return 1;
             }
             break;
+        default:
+            usage(argv[0]);
+            return 1;
         }
     }
 

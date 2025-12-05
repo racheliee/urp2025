@@ -118,12 +118,12 @@ echo ""
 
 # ----- Run Quick Test -----
 echo "Step 5: Running quick test..."
-echo "Command: sudo $CLIENT_BIN $server_host $test_file -n $iterations -b $block_num -s $seed -batch $batch_size -l"
+echo "Command: sudo $CLIENT_BIN $server_host $test_file -n $iterations -b $block_num -s $seed -B $batch_size -l"
 echo ""
 
 start_time=$(date +%s)
 if sudo "$CLIENT_BIN" "$server_host" "$test_file" \
-  -n "$iterations" -b "$block_num" -s "$seed" -batch "$batch_size" -l; then
+  -n "$iterations" -b "$block_num" -s "$seed" -B "$batch_size" -l; then
   end_time=$(date +%s)
   elapsed=$((end_time - start_time))
   
