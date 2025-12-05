@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #include "blockcopy_random.h"
-#include "client.h"
+#include "client_random.h"
 
 typedef struct {
     uint64_t pba;
@@ -98,14 +98,14 @@ exit:
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] "
-        "[-s seed] [-l] [-t]\n"
+        "Usage: %s <server_hostname> <file_path> [options]\n"
         "Options:\n"
-        "  -b block_number # of block number. Block is 4096B. (default: 1)\n"
-        "  -n iterations   Number of random copies (default: 1000000)\n"
-        "  -s seed         Seed Number (default: current time)\n"
-        "  -l log          Show Log (default: false)\n"
-        "  -t test         Print result as csv form\n",
+        "  -b block_number    # of blocks (1 block = 4096B, default: 1)\n"
+        "  -n iterations      Number of random copies (default: 1000000)\n"
+        "  -s seed            Random seed (default: current time)\n"
+        "  -l                 Show progress log\n"
+        "  -t                 Output results in CSV format\n"
+        "  -batch size        Batch size for RPC (default: 100, max: 1024)\n",
         prog);
 }
 
@@ -127,6 +127,7 @@ int main(int argc, char *argv[]) {
     long seed = time(NULL);
     int log = 0;
     int csv = 0;
+    int batch_size = 100;  // Default batch size
 
     int opt;
     while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
@@ -158,6 +159,18 @@ int main(int argc, char *argv[]) {
         default:
             usage(argv[0]);
             return 1;
+        }
+    }
+
+    // Handle -batch option separately
+    for (int i = 3; i < argc - 1; i++) {
+        if (strcmp(argv[i], "-batch") == 0) {
+            batch_size = atoi(argv[i + 1]);
+            if (batch_size <= 0 || batch_size > MAX_BATCH) {
+                fprintf(stderr, "Batch size must be between 1 and %d\n", MAX_BATCH);
+                return 1;
+            }
+            break;
         }
     }
 
@@ -201,8 +214,12 @@ int main(int argc, char *argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
 
+    // Allocate batch parameters
+    pba_batch_params batch_params;
+    
     // Test Start
-    for (long i = 0; i < iterations; i++) {
+    long i = 0;
+    while (i < iterations) {
         if (log && (i % 1000 == 0)) {
             struct timespec now_ts;
             clock_gettime(CLOCK_MONOTONIC_RAW, &now_ts);
@@ -221,75 +238,72 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        // RANDOM source / dest blocks
-        off_t src_blk = rand() % max_blocks;
-        off_t dst_blk = rand() % max_blocks;
-        while (src_blk == dst_blk) dst_blk = rand() % max_blocks;
+        // Collect batch_size operations
+        int batch_count = 0;
+        for (int b = 0; b < batch_size && i < iterations; b++, i++) {
+            // RANDOM source / dest blocks
+            off_t src_blk = rand() % max_blocks;
+            off_t dst_blk = rand() % max_blocks;
+            while (src_blk == dst_blk) dst_blk = rand() % max_blocks;
 
-        off_t src_logical = src_blk * block_size;
-        off_t dst_logical = dst_blk * block_size;
+            off_t src_logical = src_blk * block_size;
+            off_t dst_logical = dst_blk * block_size;
 
-        pba_seg *src_pba = NULL;
-        pba_seg *dst_pba = NULL;
-        size_t src_pba_cnt = 0, dst_pba_cnt = 0;
+            pba_seg *src_pba = NULL;
+            pba_seg *dst_pba = NULL;
+            size_t src_pba_cnt = 0, dst_pba_cnt = 0;
 
-        uint64_t fiemap_ns0 = 0, fiemap_ns1 = 0;
+            uint64_t fiemap_ns0 = 0, fiemap_ns1 = 0;
 
-        if (get_pba(fd, src_logical, block_size,
-                    &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
-            continue;
+            if (get_pba(fd, src_logical, block_size,
+                        &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
+                continue;
 
-        if (get_pba(fd, dst_logical, block_size,
-                    &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0) {
-            free(src_pba);
-            continue;
-        }
-
-        if (src_pba_cnt != dst_pba_cnt) {
-            fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-            fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n",
-                    (unsigned long)src_pba_cnt, (unsigned long)dst_pba_cnt);
-            for (size_t j = 0; j < src_pba_cnt; ++j) {
-                fprintf(stderr, "src_pba[%zu]: %lu, len: %lu\n",
-                        j, src_pba[j].pba, src_pba[j].len);
+            if (get_pba(fd, dst_logical, block_size,
+                        &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0) {
+                free(src_pba);
+                continue;
             }
-            for (size_t j = 0; j < dst_pba_cnt; ++j) {
-                fprintf(stderr, "dst_pba[%zu]: %lu, len: %lu\n",
-                        j, dst_pba[j].pba, dst_pba[j].len);
+
+            if (src_pba_cnt != dst_pba_cnt) {
+                fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+                fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n",
+                        (unsigned long)src_pba_cnt, (unsigned long)dst_pba_cnt);
+                free(src_pba);
+                free(dst_pba);
+                continue;
             }
-            fprintf(stderr, "\n");
-        }
 
-        pba_write_params params;
-        params.pba_src = src_pba[0].pba;
-        params.pba_dst = dst_pba[0].pba;
-        params.nbytes  = (int)src_pba[0].len;
+            // Add to batch
+            batch_params.pba_srcs[batch_count] = src_pba[0].pba;
+            batch_params.pba_dsts[batch_count] = dst_pba[0].pba;
+            batch_count++;
 
-        struct timespec t_rpc0, t_rpc1;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        int *rpc_res = write_pba_1(&params, clnt);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
-
-        uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1);
-
-        if (rpc_res == NULL || *rpc_res == -1) {
-            fprintf(stderr,
-                    "RPC write failed at PBA %lu to %lu\n",
-                    (unsigned long)params.pba_src,
-                    (unsigned long)params.pba_dst);
             free(src_pba);
             free(dst_pba);
-            break;
+
+            g_fiemap_ns += fiemap_ns0 + fiemap_ns1;
         }
 
-        free(src_pba);
-        free(dst_pba);
+        // Send batched RPC call
+        if (batch_count > 0) {
+            batch_params.count = batch_count;
+            batch_params.block_size = block_size;
 
-        g_fiemap_ns     += fiemap_ns0 + fiemap_ns1;
-        g_rpc_total_ns  += rpc_total_ns;
+            struct timespec t_rpc0, t_rpc1;
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
+            int *rpc_res = write_pba_batch_1(&batch_params, clnt);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
-        // If you want per-iteration latency CSV:
-        // if (csv) printf("%ld,%f\n", i, get_elapsed(rpc_total_ns));
+            uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1);
+
+            if (rpc_res == NULL || *rpc_res == -1) {
+                fprintf(stderr, "RPC batch write failed\n");
+                break;
+            }
+
+            g_rpc_total_ns += rpc_total_ns;
+        }
     }
 
     if (log) {
@@ -300,7 +314,7 @@ int main(int argc, char *argv[]) {
                        + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
         fprintf(stderr,
-                "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs",
+                "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs\n",
                 iterations, iterations, 100.0, elapsed);
     }
 
@@ -352,7 +366,7 @@ int main(int argc, char *argv[]) {
                              / get_elapsed(total_ns);
 
     if (csv) {
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d\n",
                block_size / ALIGN,
                iterations,
                block_size / ALIGN * iterations,
@@ -365,7 +379,8 @@ int main(int argc, char *argv[]) {
                get_elapsed(fiemap_ns),
                get_elapsed(rpc_ns),
                get_elapsed(io_ns),
-               get_elapsed(total_ns));
+               get_elapsed(total_ns),
+               batch_size);
         return 0;
     }
 
@@ -373,6 +388,7 @@ int main(int argc, char *argv[]) {
     printf("------------ RPC Test Results ------------\n");
     printf("Iterations attempted: %ld\n", iterations);
     printf("Block size: %zu bytes\n", block_size);
+    printf("Batch size: %d\n", batch_size);
     printf("Seed: %ld\n", seed);
     printf("Log on: %s\n", log ? "true" : "false");
     printf("\n");
