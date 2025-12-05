@@ -1,4 +1,4 @@
-/* blockcopy.x - RPC protocol for block copying with physical block addresses */
+/* blockcopy_random.x - RPC protocol for block copying with physical block addresses */
 
 const MAX_BATCH = 1024;
 
@@ -13,8 +13,8 @@ struct pba_write_params {
 struct pba_batch_params {
     hyper pba_srcs[MAX_BATCH];   /* array of PBAs */
     hyper pba_dsts[MAX_BATCH];   /* array of PBAs */
-    uint32 count;                /* how many elements are valid */
-    uint32 block_size;           /* size of each block */
+    unsigned int count;           /* how many elements are valid */
+    unsigned int block_size;      /* size of each block */
 };
 
 /* Timing data returned from server */
