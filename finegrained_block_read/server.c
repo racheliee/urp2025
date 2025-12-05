@@ -120,7 +120,7 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
     return &out;
 }
 
-void *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
+int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
     static int result = 0;
 
     static struct timespec t_total0, t_total1;
