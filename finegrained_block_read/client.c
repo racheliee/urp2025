@@ -31,7 +31,8 @@ static inline double get_elapsed(uint64_t ns) {
 }
 
 /* helper to get physical block address from logical offset */
-static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
+//static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
+static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, uint64_t* fiemap_ns) {
     struct timespec t_before, t_after;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_before);
 
@@ -89,9 +90,9 @@ exit:
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l] [-t]\n"
+        "Usage: %s <server_eternity> <file_path> [-b bytes] [-n iterations] [-s seed] [-l] [-t]\n"
         "Options:\n"
-        "  -b block_number # of block number. Block is 4096B. (default: 1)\n"
+        "  -b bytes        Size of content (default: 8)\n"
         "  -n iterations   Number of random copies (default: 1000000)\n"
         "  -s seed         Seed Number (default: -1)\n"
         "  -l log          Show Log (default: false)\n"
@@ -116,7 +117,7 @@ int main(int argc, char *argv[]) {
     const char *path = argv[2];
 
     /* Options */
-    size_t block_size = DEFAULT_BLOCK_SIZE;
+    size_t bytes_size = DEFAULT_BYTES_SIZE;
     long iterations = DEFAULT_ITERS;
     long seed = time(NULL);
     int log = 0;
@@ -126,12 +127,12 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
-            int block_num = strtoul(optarg, NULL, 10);
-            if (block_num <= 0) {
+            int bytes_size = strtoul(optarg, NULL, 10);
+            if (bytes_size <= 0) {
                 fprintf(stderr, "Block size must be positive number.\n");
                 return 1;
             }
-            block_size = ALIGN * block_num;
+            //block_size = ALIGN * block_num;
             break;
         }
         case 'n':
@@ -155,7 +156,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    
+
     /************ Prepare Stage ************/
     srand(seed);
 
@@ -196,7 +197,7 @@ int main(int argc, char *argv[]) {
         perror("posix_memalign");
         exit(1);
     }*/
-    
+
     /************ Prepare Stage End ************/
 
     //테스트 시작 전 시간 측정 (log용)
@@ -205,10 +206,10 @@ int main(int argc, char *argv[]) {
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
-    
-	struct timespec t_iter0, t_iter1, t_total;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
-	t_total=t_iter0;
+
+        struct timespec t_iter0, t_iter1, t_total;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
+        t_total=t_iter0;
 
         if(log) {
             if(i % 1000 == 0) {
@@ -222,31 +223,27 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        off_t max_blocks = filesize / block_size;
-        off_t src_blk = rand() % max_blocks;
-        off_t dst_blk = rand() % max_blocks;
+        off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
 
-        // Set dst_blk randomly to not overlap with src_blk
-        while(src_blk == dst_blk) dst_blk = rand() % max_blocks;
+        off_t src_logical = rand() % max_byte; //random source
 
-        off_t src_logical = src_blk * block_size;
-        off_t dst_logical = dst_blk * block_size;
-
-        pba_seg* src_pba;
-        pba_seg* dst_pba;
-        size_t src_pba_cnt, dst_pba_cnt;
+        pba_seg* src_pba; //physical address랑 len 있는 struct (pba_seg) 담을 변수
+        //size_t src_pba_cnt;
 
         /************ Fiemap0 ************/
         uint64_t fiemap_ns0, fiemap_ns1;
-        if (get_pba(fd, src_logical, block_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
+        //if (get_pba(fd, src_logical, bytes_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
+        if (get_pba(fd, src_logical, bytes_size, &src_pba, &fiemap_ns0) != 0)
             continue;
         /************ Fiemap0 End ************/
 
         /************ Fiemap1 ************/
-        if (get_pba(fd, dst_logical, block_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
-            continue;
+        //dst 없으니까 필요 X
+        //if (get_pba(fd, dst_logical, bytes_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
+            //continue;
         /************ Fiemap1 End ************/
-        
+
+        /*
         if(src_pba_cnt != dst_pba_cnt) {
             fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
             fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
@@ -258,43 +255,42 @@ int main(int argc, char *argv[]) {
             }
             fprintf(stderr, "\n");
         }
-
-        /* TODO: disabled temporarily
-        pba_write_params params;
-        params.pba_src = src_pba[0].pba;
-        params.pba_dst = dst_pba[0].pba;
-        params.nbytes = src_pba[0].len;
         */
+
+        finegrained_write_params params;
+        params.pba = src_pba[0].pba;
+        params.nbytes = src_pba[0].len;
 
         struct timespec t_rpc0, t_rpc1;
 
         /************ RPC ************/
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        // int *res = write_pba_1(&params, clnt);
+        int *res = write_1(&params, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
 
-        free(src_pba); free(dst_pba);
-        /* TODO: disabled temporarily
+        free(src_pba);
+        //free(dst_pba);
+
         if (res == NULL || *res == -1) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
             break;
-        }*/
-        
+        }
+
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
-	/************ Time Check End ************/
+        /************ Time Check End ************/
 
         uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1); //이번 iteration에서 rpc에 걸린 시간
-	uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
+        uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns0, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns1, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_rpc_total_ns, rpc_total_ns, memory_order_relaxed);
 
         g_fiemap_ns += fiemap_ns0 + fiemap_ns1; //iteration 중 fiemap에 소요한 시간 총합
         g_rpc_total_ns += rpc_total_ns; //iteration 중 rpc에 소요한 시간 총합
-	g_iter_ns += iter_total_ns; //총 시간에 이번 iteration 시간 더함
+        g_iter_ns += iter_total_ns; //총 시간에 이번 iteration 시간 더함
 
     }
 
@@ -313,7 +309,7 @@ int main(int argc, char *argv[]) {
     close(fd);
     /************ End Stage End ************/
 
-    
+
     // Get server time
     get_server_ios *res = get_time_1(NULL, clnt);
     if (res == NULL) {
@@ -334,7 +330,7 @@ int main(int argc, char *argv[]) {
     uint64_t fiemap_ns = g_fiemap_ns; //fiemap 두 번 걸린 시간 합
     uint64_t rpc_ns = g_rpc_total_ns - server_read_ns - server_write_ns - server_other_ns; //rpc 자체에만 드는 오버헤드
     uint64_t io_ns = total_ns - fiemap_ns - rpc_ns;
-	
+
     // 계산 오류 핸들러.
     if(fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
         fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
@@ -348,7 +344,7 @@ int main(int argc, char *argv[]) {
     fiemap_ns /= iterations;
     rpc_ns /= iterations;
     io_ns /= iterations;
-    
+
 
     // Calculate statistics
     long long total_bytes = (long long)iterations * block_size;
@@ -356,10 +352,10 @@ int main(int argc, char *argv[]) {
 
     if(csv) {
         // block_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
-            block_size/ALIGN, 
-            iterations, 
-            block_size/ALIGN * iterations, 
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+            block_size/ALIGN,
+            iterations,
+            block_size/ALIGN * iterations,
             (double)filesize / (1024.0 * 1024.0 * 1024.0),
             get_elapsed(server_read_ns),
             get_elapsed(server_write_ns),
