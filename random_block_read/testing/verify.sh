@@ -11,7 +11,7 @@ echo ""
 
 # ----- Configuration -----
 server_host="${1:-eternity2}"
-test_file="${2:-/mnt/nvme1/test_verify.txt}"
+test_file="${2:-/mnt/nvme1/1gb.txt}"
 file_size_gb=1
 iterations=100
 batch_size=10

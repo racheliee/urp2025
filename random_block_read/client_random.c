@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
     int batch_size = 100;  // Default batch size
 
     int opt;
-    while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
+    while ((opt = getopt(argc, argv, "b:n:s:ltB:")) != -1) {
         switch (opt) {
         case 'b': {
             int block_num = strtoul(optarg, NULL, 10);
