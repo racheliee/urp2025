@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 '''
 <Expected Folder Hierarchy>
-chart2.py
+chart.py
 logs/
     ㄴYYYYMMDD_hhmmss/
         ㄴbaseline.log
