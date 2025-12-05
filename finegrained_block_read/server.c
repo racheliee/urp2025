@@ -11,6 +11,7 @@
 #include <stdatomic.h>
 
 #define DEVICE_BLOCK_SIZE 512
+#define min(a,b) (( (a) < (b) ) ? (a) : (b))
 
 static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
     return (uint64_t)(b.tv_sec - a.tv_sec) * 1000000000ull
@@ -26,19 +27,212 @@ static uint64_t g_write_ns = 0;
 static uint64_t g_other_ns = 0;
 
 finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc_req *rqstp) {
-    static finegrained_read_returns out;
-    out.value.value_len = 1;
+    // result of read value
+    static char read_value[MAX_BYTES];
 
-    char dum_value[4] = "1234"; // null does not included to dum_value;
-    out.value.value_val = malloc(4);
-    memcpy(out.value.value_val, dum_value, 4);
+    // return value
+    static finegrained_read_returns out;
+    out.value.value_val = read_value;
+
+    static struct timespec t_total0, t_total1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
+    
+    static int fd = -1;
+    if (fd == -1) {
+        fd = open(DEVICE_PATH, O_RDONLY | O_DIRECT);
+
+        if (fd < 0) {
+            perror("open device");
+            out.value.value_len = 0;
+            return &out;
+        }
+    }
+
+    // for time measure
+    uint64_t read_ns = 0;
+
+    // target len to read
+    int target_read_bytes_num = params->read_bytes;
+    if(target_read_bytes_num > MAX_BYTES) {
+        fprintf(stderr, "read bytes should be less than %zu, but current %zu.\n", (size_t)MAX_BYTES, (size_t)target_read_bytes_num);
+        out.value.value_len = 0;
+        return &out;
+    }
+
+    // current read bytes
+    int read_bytes_num = 0;
+
+    // pba
+    int pbas_len = params->pba.pba_len;
+    finegrained_pba* pbas = params->pba.pba_val;
+
+    for(int i = 0; i < pbas_len; ++i) {
+        int64_t pba = pbas[i].pba;
+        int offset = pbas[i].offset;
+        int nbytes = pbas[i].nbytes;
+
+        void *buf;
+        if (posix_memalign(&buf, ALIGN, nbytes) != 0) {
+            fprintf(stderr, "posix_memalign failed\n");
+            out.value.value_len = 0;
+            return &out;
+        }
+
+        /************ Read ************/
+
+        static struct timespec t_read0, t_read1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
+
+        ssize_t r = pread(fd, buf, nbytes, pba);
+        if (r == -1) { 
+            perror("pread");
+            free(buf);
+            out.value.value_len = 0;
+            return &out;
+        }
+        if ((size_t)r != (size_t)nbytes) {
+            fprintf(stderr, "read only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)r);
+            free(buf);
+            out.value.value_len = 0;
+            return &out;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_read1);
+        read_ns += ns_diff(t_read0, t_read1);
+
+        /************ Read End ************/
+
+        int cur_read_bytes_num = min(nbytes-offset, target_read_bytes_num - read_bytes_num);
+        memcpy(read_value + read_bytes_num, (char*)buf + offset, cur_read_bytes_num);
+        
+        read_bytes_num += cur_read_bytes_num;
+        free(buf);
+    }
+
+    out.value.value_len = (u_int) read_bytes_num;
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
+
+    uint64_t total_ns = ns_diff(t_total0, t_total1);
+    g_other_ns += (total_ns > read_ns ? total_ns - read_ns : 0);
+    g_read_ns += read_ns;
 
     return &out;
 }
 
 void *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
-    static char dummy;
-    return (void *)&dummy;
+    static int result = 0;
+
+    static struct timespec t_total0, t_total1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
+    
+    static int fd = -1;
+    if (fd == -1) {
+        fd = open(DEVICE_PATH, O_RDWR | O_DIRECT);
+
+        if (fd < 0) {
+            perror("open device");
+            result = -1;
+            return &result;
+        }
+    }
+
+    // for time measure
+    uint64_t read_ns = 0;
+    uint64_t write_ns = 0;
+
+    // write value information
+    char* write_value = params->value.value_val;
+    int target_write_bytes_num = params->value.value_len;
+
+    // current read bytes
+    int write_bytes_num = 0;
+
+    // pba
+    int pbas_len = params->pba.pba_len;
+    finegrained_pba* pbas = params->pba.pba_val;
+
+    for(int i = 0; i < pbas_len; ++i) {
+        int64_t pba = pbas[i].pba;
+        int offset = pbas[i].offset;
+        int nbytes = pbas[i].nbytes;
+
+        if(offset < 0 || offset >= nbytes) {
+            fprintf(stderr, "offset error. less than 0 or greater than nbytes\n");
+            result = -1;
+            return &result;
+        }
+
+        void *buf;
+        if (posix_memalign(&buf, ALIGN, nbytes) != 0) {
+            fprintf(stderr, "posix_memalign failed\n");
+            result = -1;
+            return &result;
+        }
+
+        /************ Read ************/
+
+        static struct timespec t_read0, t_read1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
+
+        ssize_t r = pread(fd, buf, nbytes, pba);
+        if (r == -1) { 
+            perror("pread");
+            free(buf);
+            result = -1;
+            return &result;
+        }
+        if ((size_t)r != (size_t)nbytes) {
+            fprintf(stderr, "read only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)r);
+            free(buf);
+            result = -1;
+            return &result;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_read1);
+        read_ns += ns_diff(t_read0, t_read1);
+
+        /************ Read End ************/
+
+        int cur_write_bytes_num = min(nbytes-offset, target_write_bytes_num - write_bytes_num);
+        memcpy(buf+offset, write_value+write_bytes_num, cur_write_bytes_num);
+        
+        /************ Write ************/
+
+        struct timespec t_write0, t_write1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_write0);
+
+        ssize_t w = pwrite(fd, buf, nbytes, pba);
+        if(w == -1) {
+            perror("pwrite");
+            result = -1;
+            free(buf);
+            return &result;
+        }
+        if (w < nbytes) {
+            fprintf(stderr, "written only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)w);
+            result = -1;
+            free(buf);
+            return &result;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
+        write_ns += ns_diff(t_write0, t_write1);
+
+        /************ Write End ************/
+
+        write_bytes_num += cur_write_bytes_num;
+        free(buf);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
+
+    uint64_t total_ns = ns_diff(t_total0, t_total1);
+    g_read_ns += read_ns;
+    g_write_ns += write_ns;
+    g_other_ns += (total_ns > read_ns + write_ns ? total_ns - read_ns - write_ns : 0);
+    
+    return &result;
 }
 
 get_server_ios *get_time_1_svc(void *argp, struct svc_req *rqstp) {

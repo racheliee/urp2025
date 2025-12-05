@@ -29,7 +29,7 @@ struct get_server_ios {
 program BLOCKCOPY_PROG {
     version BLOCKCOPY_VERS {
         finegrained_read_returns READ(finegrained_read_params) = 1;
-        void WRITE(finegrained_write_params) = 2;
+        int WRITE(finegrained_write_params) = 2;
         get_server_ios GET_TIME(void) = 3;
         void RESET_TIME(void) = 4;
     } = 1;
