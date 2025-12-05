@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
             csv = 1;
             break;
         case 'B':
-            batch_size = atoi(argv[i + 1]);
+            batch_size = atoi(optarg);
             if (batch_size <= 0 || batch_size > MAX_BATCH) {
                 fprintf(stderr, "Batch size must be between 1 and %d\n", MAX_BATCH);
                 return 1;

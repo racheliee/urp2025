@@ -51,5 +51,5 @@ To run the client, use the following command:
 - `s <seed>` - Random seed for reproducibility (default: current time)
 - `l` - Enable progress logging
 - `t` - Output results in CSV format
-- `batch <size>` - Batch size for RPC calls (default: 100, max: 1024)
+- `B <size>` - Batch size for RPC calls (default: 100, max: 1024)
 
