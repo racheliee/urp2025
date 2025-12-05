@@ -31,7 +31,8 @@ static inline double get_elapsed(uint64_t ns) {
 }
 
 /* helper to get physical block address from logical offset */
-static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
+//static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
+static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, uint64_t* fiemap_ns) {
     struct timespec t_before, t_after;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_before);
 
@@ -116,7 +117,7 @@ int main(int argc, char *argv[]) {
     const char *path = argv[2];
 
     /* Options */
-    size_t block_size = DEFAULT_BLOCK_SIZE;
+    size_t bytes_size = DEFAULT_BYTES_SIZE;
     long iterations = DEFAULT_ITERS;
     long seed = time(NULL);
     int log = 0;
@@ -126,12 +127,12 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
-            int block_num = strtoul(optarg, NULL, 10);
-            if (block_num <= 0) {
+            int bytes_size = strtoul(optarg, NULL, 10);
+            if (bytes_size <= 0) {
                 fprintf(stderr, "Block size must be positive number.\n");
                 return 1;
             }
-            block_size = ALIGN * block_num;
+            //block_size = ALIGN * block_num;
             break;
         }
         case 'n':
@@ -222,31 +223,27 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        off_t max_blocks = filesize / block_size;
-        off_t src_blk = rand() % max_blocks;
-        off_t dst_blk = rand() % max_blocks;
+        off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
 
-        // Set dst_blk randomly to not overlap with src_blk
-        while(src_blk == dst_blk) dst_blk = rand() % max_blocks;
+        off_t src_logical = rand() % max_byte; //random source
 
-        off_t src_logical = src_blk * block_size;
-        off_t dst_logical = dst_blk * block_size;
-
-        pba_seg* src_pba;
-        pba_seg* dst_pba;
-        size_t src_pba_cnt, dst_pba_cnt;
+        pba_seg* src_pba; //physical address랑 len 있는 struct (pba_seg) 담을 변수
+        //size_t src_pba_cnt;
 
         /************ Fiemap0 ************/
         uint64_t fiemap_ns0, fiemap_ns1;
-        if (get_pba(fd, src_logical, block_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
+        //if (get_pba(fd, src_logical, bytes_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
+        if (get_pba(fd, src_logical, bytes_size, &src_pba, &fiemap_ns0) != 0)
             continue;
         /************ Fiemap0 End ************/
 
         /************ Fiemap1 ************/
-        if (get_pba(fd, dst_logical, block_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
-            continue;
+        //dst 없으니까 필요 X
+        //if (get_pba(fd, dst_logical, bytes_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
+            //continue;
         /************ Fiemap1 End ************/
 
+        /*
         if(src_pba_cnt != dst_pba_cnt) {
             fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
             fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
@@ -258,30 +255,29 @@ int main(int argc, char *argv[]) {
             }
             fprintf(stderr, "\n");
         }
-
-        /* TODO: disabled temporarily
-        pba_write_params params;
-        params.pba_src = src_pba[0].pba;
-        params.pba_dst = dst_pba[0].pba;
-        params.nbytes = src_pba[0].len;
         */
+
+        finegrained_write_params params;
+        params.pba = src_pba[0].pba;
+        params.nbytes = src_pba[0].len;
 
         struct timespec t_rpc0, t_rpc1;
 
         /************ RPC ************/
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        // int *res = write_pba_1(&params, clnt);
+        int *res = write_1(&params, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
 
-        free(src_pba); free(dst_pba);
-        /* TODO: disabled temporarily
+        free(src_pba);
+        //free(dst_pba);
+
         if (res == NULL || *res == -1) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
             break;
-        }*/
+        }
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
         /************ Time Check End ************/
