@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+
+# ---- expected directory hierarchy----
+# HOME_DIR (최상위)
+#     ㄴsequential_block_read
+#     ㄴrandom_block_read
+
 # ----- 파라미터 세트 -----
 block_nums=(1 2 4 8 16)
 block_copies=(128000)
 file_sizes=(30)   # GiB
+MAX_ITERATIONS=35
 seed=-1
 
-LOG_DIR="${LOG_DIR:-./logs}"
+HOME_DIR="${HOME_DIR:-..}"
+
+LOG_DIR="${LOG_DIR:-$HOME_DIR/logs}"
 mkdir -p "$LOG_DIR"
 
 DATE_DIR="$(date +%Y%m%d_%H%M%S)"
@@ -23,14 +32,16 @@ a="$mnt/a.txt"
 b="$mnt/b.txt"
 
 # ----- 필요 명령/바이너리 점검 -----
+# testing 폴더에서 실행되어야 함!
 need_cmds=(sudo cp sync)
 for c in "${need_cmds[@]}"; do
   command -v "$c" >/dev/null 2>&1 || { echo "필요 명령 없음: $c" >&2; exit 1; }
 done
-for bin in ./create_file ./client ./baseline ./compare; do
+for bin in $HOME_DIR/create_file $HOME_DIR/client $HOME_DIR/baseline ./compare; do
   [[ -x "$bin" ]] || { echo "실행 파일 없음 또는 실행 불가: $bin" >&2; exit 1; }
 done
 
+echo "명령, 실행 파일 점검 완료"
 # ----- 캐시 동기화/정리 -----
 # 시스템 전체에 영향. 원치 않으면: DROP_CACHES=0 ./test.sh
 DROP_CACHES="${DROP_CACHES:-1}"
@@ -46,13 +57,13 @@ echo "=== 테스트 시작 ==="
 echo "params: seed=$seed, block_nums=${block_nums[*]}, block_copies=${block_copies[*]}, file_sizes=${file_sizes[*]}"
 echo
 
-echo "block_num,iteration,num_block_copies,file_size,read_ns,write_ns,prep_ns,end_ns,io_ns,total_time" >> "$BASELINE_LOG_FILE"
-echo "block_num,iteration,num_block_copies,file_size,server_read_ns,server_write_ns,server_other_ns,prep_ns,end_ns,fiemap_ns,rpc_ns,io_ns,total_time" >> "$RPC_LOG_FILE"
+echo "block_num,iteration,num_block_copies,file_size,read_ns,write_ns,io_ns,total_time" >> "$BASELINE_LOG_FILE"
+echo "block_num,iteration,num_block_copies,file_size,server_read_ns,server_write_ns,server_other_ns,fiemap_ns,rpc_ns,io_ns,total_time" >> "$RPC_LOG_FILE"
 
 # (1) 파일 생성 및 복제(초기화)
 fs=${file_sizes[0]}
-echo "[create] sudo ./create_file $a $fs --gib"
-sudo ./create_file "$a" "$fs" --gib
+echo "[create] sudo $HOME_DIR/create_file $a $fs --gib"
+sudo "$HOME_DIR"/create_file "$a" "$fs" --gib
 flush_caches
 
 echo "[copy] sudo cp $a $b"
@@ -60,7 +71,7 @@ sudo cp "$a" "$b"
 flush_caches
 
 i=1
-while true; do
+while [ "$i" -le "$MAX_ITERATIONS" ]; do
     echo "iteration: $i >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
     ((i++))
     for fs in "${file_sizes[@]}"; do
@@ -78,15 +89,15 @@ while true; do
                 echo "----- START $case_id -----"
 
                 # (2) client: a.txt
-                echo "[client] sudo ./client eternity2 $a -n $it -b $bn -s $seed"
-                sudo ./client eternity2 "$a" -n "$it" -b "$bn" -s "$seed" -t \
+                echo "[client] sudo $HOME_DIR/client eternity2 $a -n $it -b $bn -s $seed"
+                sudo "$HOME_DIR"/client eternity2 "$a" -n "$it" -b "$bn" -s "$seed" -t \
                     > >(stdbuf -oL tee -a "$RPC_LOG_FILE" >/dev/null) \
                     2> >(stdbuf -eL tee -a "$RPC_LOG_FILE" >&2)
                 flush_caches
 
                 # (3) baseline: b.txt
-                echo "[baseline] sudo ./baseline $b -n $it -b $bn -s $seed"
-                sudo ./baseline "$b" -n "$it" -b "$bn" -s "$seed" -t \
+                echo "[baseline] sudo $HOME_DIR/baseline $b -n $it -b $bn -s $seed"
+                sudo $HOME_DIR/baseline "$b" -n "$it" -b "$bn" -s "$seed" -t \
                     > >(stdbuf -oL tee -a "$BASELINE_LOG_FILE" >/dev/null) \
                     2> >(stdbuf -eL tee -a "$BASELINE_LOG_FILE" >&2)
                 flush_caches
