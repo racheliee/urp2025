@@ -36,7 +36,8 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return (double) ns / 1e9;
+    return (double) ns / 1e3;
+    //convert into micro second unit
 }
 
 /* helper to get physical block address from logical offset */
@@ -171,7 +172,7 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
-            int bytes_size = strtoul(optarg, NULL, 10);
+            bytes_size = strtoul(optarg, NULL, 10);
             if (bytes_size <= 0) {
                 fprintf(stderr, "Block size must be positive number.\n");
                 return 1;
@@ -297,7 +298,7 @@ int main(int argc, char *argv[]) {
 
         off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
 
-        off_t src_logical = rand() % max_byte; //random source
+        off_t src_logical = (off_t)((double)rand() / RAND_MAX * max_byte); //random source
 
         pba_seg* seg = NULL;
         size_t seg_cnt = 0;
@@ -455,7 +456,12 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
         exit(1);
     }
-
+    printf("\nserver_read_ns = %ld\n", server_read_ns);
+    printf("server_write_ns = %ld\n", server_write_ns);
+    printf("total_ns = %ld\n", total_ns/100000);
+    printf("fiemap_ns = %ld\n", fiemap_ns/100000);
+    printf("rpc_ns = %ld\n", rpc_ns/100000);
+    printf("io_ns = %ld\n", io_ns/100000);
     server_read_ns /= iterations;
     server_write_ns /= iterations;
     server_other_ns /= iterations;
@@ -471,7 +477,7 @@ int main(int argc, char *argv[]) {
 
     if(csv) {
         // bytes_size, iteration, total size, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
             bytes_size,
             iterations,
             bytes_size * iterations,
