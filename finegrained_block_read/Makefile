@@ -1,6 +1,6 @@
 RPCGEN = rpcgen
 CC = gcc
-CFLAGS = -O2 -Wall # -I/usr/include/tirpc
+CFLAGS = -O2 -Wall #-I/usr/include/tirpc
 LDLIBS  += -lnsl #-ltirpc
 TARGETS = client_read client server 
 

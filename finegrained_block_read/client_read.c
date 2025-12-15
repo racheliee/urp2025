@@ -31,7 +31,7 @@ static inline double get_elapsed(uint64_t ns) {
 }
 
 /* helper to get physical block address from logical offset */
-static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* out_cnt, uint64_t* fiemap_ns) {
+static int get_pba(int fd, off_t logical, size_t length, finegrained_pba **out, size_t* out_cnt, uint64_t* fiemap_ns) {
     struct timespec t_before, t_after;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_before);
 
@@ -61,18 +61,38 @@ static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t* 
         goto exit;
     }
 
-    pba_seg *vec = calloc(fiemap->fm_mapped_extents, sizeof(pba_seg));
-    size_t n = 0;
+    finegrained_pba *vec = calloc(fiemap->fm_mapped_extents, sizeof(finegrained_pba));
     if(!vec) {
         result = -1;
         goto exit;
     }
 
+    uint64_t req_start = (uint64_t)logical;
+    uint64_t req_end   = req_start + (uint64_t)length;
+    size_t n = 0;
+
     for(size_t i = 0; i < fiemap->fm_mapped_extents; ++i) {
         struct fiemap_extent *e = &fiemap->fm_extents[i];
+        
+        uint64_t ext_start = e->fe_logical;
+        uint64_t ext_end   = e->fe_logical + e->fe_length;
 
-        vec[n].pba = e->fe_physical + (logical - e->fe_logical);
-        vec[n].len = length;
+        // overlap in logical space
+        uint64_t ov_start = (req_start > ext_start) ? req_start : ext_start;
+        uint64_t ov_end   = (req_end   < ext_end)   ? req_end   : ext_end;
+        if (ov_start >= ov_end) continue;
+
+        uint64_t piece_len = ov_end - ov_start;
+
+        uint64_t phys = e->fe_physical + (ov_start - ext_start);
+
+        uint64_t pba_base = (phys / BLOCK_SIZE) * BLOCK_SIZE;     // byte-addressed PBA base
+        uint64_t off_in_block = phys - pba_base;
+
+
+        vec[n].pba    = pba_base;
+        vec[n].offset = (int)off_in_block;
+        vec[n].nbytes = (int)piece_len;
         n++;
     }
 
@@ -229,7 +249,7 @@ int main(int argc, char *argv[]) {
         off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
         off_t src_logical = (off_t)((double)rand() / RAND_MAX * max_byte); //random source
 
-        pba_seg* seg = NULL;
+        finegrained_pba* seg = NULL;
         size_t seg_cnt = 0;
 
         /************ Fiemap0 ************/
@@ -239,36 +259,41 @@ int main(int argc, char *argv[]) {
         /************ Fiemap0 End ************/
         
         for(size_t j = 0; j < seg_cnt; ++j) {
-            printf("PBA[%zu]: %lu, LEN: %zu\n", j, (unsigned long)seg[j].pba, seg[j].len);
+            printf("PBA[%zu]: %lu, OFFSET: %d, NBYTES: %d\n", j, (unsigned long)seg[j].pba, seg[j].offset, seg[j].nbytes);
         }
         printf("\n");
         
+        finegrained_read_params params;
+        params.pba.pba_len = seg_cnt;
+        params.pba.pba_val = seg;
+        params.read_bytes = (int)bytes_size;
+
 
         struct timespec t_rpc0, t_rpc1;
 
         /************ RPC ************/
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        // int *res = write_pba_1(&params, clnt);
+        finegrained_read_returns *res = read_1(&params, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
 
         free(seg);
-        /* TODO: disabled temporarily
-        if (res == NULL || *res == -1) {
-            fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
+        if (res == NULL || res->value.value_len == 0) {
+            fprintf(stderr, "RPC read failed\n");
             break;
-        }*/
+        }
+        if(check) {
+            printf("Read %s from server.\n", res->value.value_val);
+            // Need to check with actual data
+        }
         
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
 	/************ Time Check End ************/
 
         uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1); //이번 iteration에서 rpc에 걸린 시간
 	    uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
-        // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns0, memory_order_relaxed);
-        // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns1, memory_order_relaxed);
-        // atomic_fetch_add_explicit(&g_rpc_total_ns, rpc_total_ns, memory_order_relaxed);
 
         g_fiemap_ns += fiemap_ns0; //iteration 중 fiemap에 소요한 시간 총합
         g_rpc_total_ns += rpc_total_ns; //iteration 중 rpc에 소요한 시간 총합
@@ -283,7 +308,7 @@ int main(int argc, char *argv[]) {
         double elapsed = (now_ts.tv_sec - t_total0.tv_sec)
                         + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
-        fprintf(stderr, "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
+        fprintf(stderr, "\rFinegrained Read RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
     }
 
     /************ End Stage ************/
@@ -334,7 +359,7 @@ int main(int argc, char *argv[]) {
 
     if(csv) {
         // byte_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             bytes_size, 
             iterations, 
             bytes_size * iterations, 
