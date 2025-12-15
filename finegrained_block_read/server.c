@@ -149,7 +149,6 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
 
     // write value information
     char* write_value = params->value.value_val;
-    int target_write_bytes_num = params->value.value_len;
 
     // current read bytes
     int write_bytes_num = 0;

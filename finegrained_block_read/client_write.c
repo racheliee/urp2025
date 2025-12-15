@@ -225,12 +225,26 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     off_t filesize = st.st_size;
+
+    // Make write buffer
+    char* write_buf = malloc(bytes_size);
+    if(!write_buf) {
+        perror("malloc write_buf failed");
+        exit(1);
+    }
+    for(size_t i = 0; i < bytes_size; ++i) {
+        write_buf[i] = 'A' + (char)(rand() % 26);
+    }
     
     /************ Prepare Stage End ************/
 
     //테스트 시작 전 시간 측정 (log용)
     struct timespec t_total0;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
+
+    finegrained_write_params params;
+    params.value.value_val = write_buf;
+    params.value.value_len = (int)bytes_size;
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
@@ -258,10 +272,8 @@ int main(int argc, char *argv[]) {
             continue;
         /************ Fiemap0 End ************/
         
-        finegrained_read_params params;
         params.pba.pba_len = seg_cnt;
         params.pba.pba_val = seg;
-        params.read_bytes = (int)bytes_size;
 
 
         struct timespec t_rpc0, t_rpc1;
@@ -269,14 +281,14 @@ int main(int argc, char *argv[]) {
         /************ RPC ************/
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        finegrained_read_returns *res = read_1(&params, clnt);
+        int *res = write_1(&params, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
         /************ RPC End ************/
 
         free(seg);
-        if (res == NULL || res->value.value_len == 0) {
-            fprintf(stderr, "RPC read failed\n");
+        if (res == NULL || res == 0) {
+            fprintf(stderr, "RPC write failed\n");
             break;
         }
         if(check) {    
@@ -292,16 +304,16 @@ int main(int argc, char *argv[]) {
             }
 
             ssize_t r = pread(fd, expected_buf, block_length, block_logical);
-;
+            
             if(r != (ssize_t)block_length) {
                 fprintf(stderr, "pread for check failed\n");
                 free(expected_buf);
                 break;
             }
 
-            if(memcmp(expected_buf + offset_in_block, res->value.value_val, bytes_size) != 0) {
+            if(memcmp(expected_buf + offset_in_block, write_buf, bytes_size) != 0) {
                 fprintf(stderr, "Data mismatch at iteration %ld, logical offset %ld\n", i, src_logical);
-                fprintf(stderr, "expected: %.*s, rpc: %.*s\n\n", (int)bytes_size, expected_buf + offset_in_block, (int)bytes_size, res->value.value_val);
+                fprintf(stderr, "expected: %.*s, rpc: %.*s\n\n", (int)bytes_size, expected_buf + offset_in_block, (int)bytes_size, write_buf);
             }
             free(expected_buf);
         }

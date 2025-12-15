@@ -1,8 +1,8 @@
 RPCGEN = rpcgen
 CC = gcc
-CFLAGS = -O2 -Wall #-I/usr/include/tirpc
-LDLIBS  += -lnsl #-ltirpc
-TARGETS = client_read server client
+CFLAGS = -O2 -Wall -I/usr/include/tirpc
+LDLIBS  += -lnsl -ltirpc
+TARGETS = client_read server client_write
 
 all: $(TARGETS)
 
@@ -14,6 +14,9 @@ client: client.c client.h blockcopy_clnt.c blockcopy_xdr.c
 
 client_read: client_read.c client.h blockcopy_clnt.c blockcopy_xdr.c
 	$(CC) $(CFLAGS) -o client_read client_read.c blockcopy_clnt.c blockcopy_xdr.c $(LDLIBS)
+
+client_write: client_write.c client.h blockcopy_clnt.c blockcopy_xdr.c
+	$(CC) $(CFLAGS) -o client_write client_write.c blockcopy_clnt.c blockcopy_xdr.c $(LDLIBS)
 
 server: server.c server.h blockcopy_svc.c blockcopy_xdr.c
 	$(CC) $(CFLAGS) -o server server.c blockcopy_svc.c blockcopy_xdr.c $(LDLIBS)
