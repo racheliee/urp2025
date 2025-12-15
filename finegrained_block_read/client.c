@@ -336,6 +336,8 @@ int main(int argc, char *argv[]) {
         */
 
 
+
+
         //write할 내용
         char* write_buf = malloc(bytes_size);
         if (!write_buf) {
@@ -364,34 +366,46 @@ int main(int argc, char *argv[]) {
 
 
         // fill finegrained_write_params
-        finegrained_write_params params; //define
+        finegrained_read_params rparams; //define
 
         // pba
-        params.pba.pba_len = seg_cnt;
-        params.pba.pba_val=pbas;
+        rparams.pba.pba_len = seg_cnt;
+        rparams.pba.pba_val=pbas;
+        rparams.read_bytes = bytes_size;
 
-        //value
-        params.value.value_len=(u_int)bytes_size;
-        params.value.value_val = write_buf;
+        finegrained_read_returns *rres = read_1(&rparams, clnt);
+        if (rres == NULL || rres->value.value_len != bytes_size) {
+            fprintf(stderr, "RPC read failed\n");
+            free(pbas);
+            free(seg);
+            continue;
+        }
+
+        char *read_buf = malloc(bytes_size);
+        memcpy(read_buf, rres->value.value_val, bytes_size);
+
+        // ***** RPC READ END *****
+
+        // ****** WRITE START *****
+        finegrained_write_params params;
+        params.pba.pba_len = seg_cnt;
+        params.pba.pba_val = pbas;
+        params.value.value_len = bytes_size;
+        params.value.value_val = read_buf;
 
         struct timespec t_rpc0, t_rpc1;
-
-        /************ RPC ************/
-
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
         int *res = write_1(&params, clnt);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
 
-        /************ RPC End ************/
-
         if (res == NULL || *res == -1) {
             fprintf(stderr, "RPC write failed (iter=%ld)\n", i);
+            free(read_buf);
             free(pbas);
-            free(write_buf);
             free(seg);
             break;
         }
-
+        // ***** RPC WRITE END *****
         free(seg);
         free(pbas);
         free(write_buf);
