@@ -130,7 +130,9 @@ int main(int argc, char *argv[]) {
         write_buf[i] = 'A' + (char)(rand() % 26);
     }
 
-    printf("Write buffer: %.*s\n", (int)bytes_size, write_buf);
+    if(!csv) {
+        printf("Write buffer: %.*s\n", (int)bytes_size, write_buf);
+    }
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
