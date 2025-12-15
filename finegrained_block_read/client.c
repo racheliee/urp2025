@@ -88,7 +88,7 @@ static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t *
 
     uint64_t req_start = logical;
     uint64_t req_end   = logical + length;
-    const uint64_t sector_size=512; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //const uint64_t sector_size=512; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
     for(size_t i = 0; i < fiemap->fm_mapped_extents; ++i) {
@@ -108,14 +108,14 @@ static int get_pba(int fd, off_t logical, size_t length, pba_seg **out, size_t *
             e->fe_physical + (overlap_start - e->fe_logical);
 
         // ---- sector align ----
-        uint64_t mask    = ~(uint64_t)(sector_size - 1);
-        uint64_t aligned = physical & mask;
+        uint64_t block_size    = 4096;
+        uint64_t aligned = physical & !(block_size-1);
         uint32_t off     = (uint32_t)(physical - aligned);
 
         // segment 추가
-        vec[seg_count].pba    = aligned;
-        vec[seg_count].offset = (int)off;
-        vec[seg_count].nbytes = (int)seg_len;
+        vec[seg_count].pba    = physical;
+        vec[seg_count].offset = 0;
+        vec[seg_count].nbytes = 4096;
 
         seg_count++;
     }
@@ -236,6 +236,7 @@ int main(int argc, char *argv[]) {
     }
     off_t filesize = st.st_size;
 
+    off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
     // aligned memory allocation in buf
     /*void *buf;
     if (posix_memalign(&buf, ALIGN, block_size) != 0) {
@@ -260,13 +261,14 @@ int main(int argc, char *argv[]) {
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
-        /*
-        //파일 내용 읽기
+
+        off_t src_logical = (off_t)((double)rand() / RAND_MAX * max_byte); //random source, where to write
+
+        //파일 내용 읽기, src_logical부터
         if (lseek(fd, src_logical, SEEK_SET) == (off_t)-1) {
             perror("lseek");
             continue;
         }
-
 
         ssize_t rd = read(fd, buf, bytes_size);
         if (rd < 0) {
@@ -278,7 +280,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "short read: expected %zu, got %zd\n",bytes_size, rd);
             continue;
         }
-        */
 
         struct timespec t_iter0, t_iter1, t_total;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
@@ -296,48 +297,18 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        off_t max_byte = filesize - bytes_size; //어딜 고르든 bytes size만큼 고를 수 있게
-
-        off_t src_logical = (off_t)((double)rand() / RAND_MAX * max_byte); //random source
-
-        pba_seg* seg = NULL;
+        finegrained_pba* seg = NULL;
         size_t seg_cnt = 0;
-        //size_t src_pba_cnt;
 
         /************ Fiemap0 ************/
         uint64_t fiemap_ns0;
         if (get_pba(fd, src_logical, bytes_size, &seg, &seg_cnt, &fiemap_ns0) != 0) {
             continue;
         }
-        //uint64_t fiemap_ns1;
-        //if (get_pba(fd, src_logical, bytes_size, &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
-        //if (get_pba(fd, src_logical, bytes_size, &src_pba, &fiemap_ns0) != 0)
-            //continue;
         /************ Fiemap0 End ************/
 
-        /************ Fiemap1 ************/
-        //dst 없으니까 필요 X
-        //if (get_pba(fd, dst_logical, bytes_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
-            //continue;
-        /************ Fiemap1 End ************/
 
-        /*
-        if(src_pba_cnt != dst_pba_cnt) {
-            fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-            fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
-            for(int j = 0; j < src_pba_cnt; ++j) {
-                fprintf(stderr, "src_pba[%d]: %lu, len: %lu\n", j, src_pba[j].pba, src_pba[j].len);
-            }
-            for(int j = 0; j < dst_pba_cnt; ++j) {
-                fprintf(stderr, "dst_pba[%d]: %lu, len: %lu\n", j, dst_pba[j].pba, dst_pba[j].len);
-            }
-            fprintf(stderr, "\n");
-        }
-        */
-
-
-
-
+        // ****** RPC WRITE START ******
         //write할 내용
         char* write_buf = malloc(bytes_size);
         if (!write_buf) {
@@ -346,10 +317,12 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
+        //랜덤으로 채우되 null은 배제
         for (int i=0 ; i < bytes_size; i++) {
                 write_buf[i] = (rand() % 255)+1;
         }
 
+        /*
         finegrained_pba *pbas = malloc(sizeof(finegrained_pba) * seg_cnt);
         if (!pbas) {
                 perror("malloc: pbas");
@@ -363,48 +336,32 @@ int main(int argc, char *argv[]) {
             pbas[j].offset = seg[j].offset;
             pbas[j].nbytes = seg[j].nbytes;
         }
-
+        */
 
         // fill finegrained_write_params
-        finegrained_read_params rparams; //define
+        finegrained_write_params wparams; //define
 
         // pba
-        rparams.pba.pba_len = seg_cnt;
-        rparams.pba.pba_val=pbas;
-        rparams.read_bytes = bytes_size;
+        wparams.pba.pba_len = seg_cnt;
+        wparams.pba.pba_val=seg;
+        wparams.value.value_len = bytes_size;
+        wparams.value.value_val = write_buf;
 
-        finegrained_read_returns *rres = read_1(&rparams, clnt);
-        if (rres == NULL || rres->value.value_len != bytes_size) {
+        struct timespec t_rpc0, t_rpc1;
+
+        /******** RPC ******/
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
+        int *wres = write_1(&wparams, clnt);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
+        /***** RPC END *******/
+
+        if (wres == NULL || wres->value.value_len != bytes_size) {
             fprintf(stderr, "RPC read failed\n");
             free(pbas);
             free(seg);
             continue;
         }
 
-        char *read_buf = malloc(bytes_size);
-        memcpy(read_buf, rres->value.value_val, bytes_size);
-
-        // ***** RPC READ END *****
-
-        // ****** WRITE START *****
-        finegrained_write_params params;
-        params.pba.pba_len = seg_cnt;
-        params.pba.pba_val = pbas;
-        params.value.value_len = bytes_size;
-        params.value.value_val = read_buf;
-
-        struct timespec t_rpc0, t_rpc1;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-        int *res = write_1(&params, clnt);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
-
-        if (res == NULL || *res == -1) {
-            fprintf(stderr, "RPC write failed (iter=%ld)\n", i);
-            free(read_buf);
-            free(pbas);
-            free(seg);
-            break;
-        }
         // ***** RPC WRITE END *****
         free(seg);
         free(pbas);
@@ -414,6 +371,13 @@ int main(int argc, char *argv[]) {
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
         /************ Time Check End ************/
+
+
+        // ****** 검증 ******
+
+
+
+        // *************
 
         uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1); //이번 iteration에서 rpc에 걸린 시간
         uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
