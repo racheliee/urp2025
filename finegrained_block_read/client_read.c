@@ -30,6 +30,13 @@ static inline double get_elapsed(uint64_t ns) {
     return (double) ns / 1e9;
 }
 
+static inline uint64_t align_down_u64(uint64_t x, uint64_t a) {
+    return (x / a) * a;
+}
+static inline uint64_t align_up_u64(uint64_t x, uint64_t a) {
+    return ((x + a - 1) / a) * a;
+}
+
 /* helper to get physical block address from logical offset */
 static int get_pba(int fd, off_t logical, size_t length, finegrained_pba **out, size_t* out_cnt, uint64_t* fiemap_ns) {
     struct timespec t_before, t_after;
@@ -86,13 +93,17 @@ static int get_pba(int fd, off_t logical, size_t length, finegrained_pba **out, 
 
         uint64_t phys = e->fe_physical + (ov_start - ext_start);
 
-        uint64_t pba_base = (phys / BLOCK_SIZE) * BLOCK_SIZE;     // byte-addressed PBA base
-        uint64_t off_in_block = phys - pba_base;
+        uint64_t need_start = phys;
+        uint64_t need_end   = phys + piece_len;
 
+        uint64_t rd_start = align_down_u64(need_start, ALIGN);
+        uint64_t rd_end   = align_up_u64(need_end, ALIGN);
+        uint64_t rd_len   = rd_end - rd_start;
+        uint64_t off_in_rd = need_start - rd_start;
 
-        vec[n].pba    = pba_base;
-        vec[n].extent_bytes = (int)e->fe_length;
-        vec[n].offset = (int)off_in_block;
+        vec[n].pba = rd_start;
+        vec[n].extent_bytes = (int)rd_len;
+        vec[n].offset = (int)off_in_rd;
         vec[n].length = (int)piece_len;
         n++;
     }
@@ -254,10 +265,12 @@ int main(int argc, char *argv[]) {
             continue;
         /************ Fiemap0 End ************/
         
-        for(size_t j = 0; j < seg_cnt; ++j) {
-            printf("PBA: %lu, extent_bytes: %d, offset: %d, length: %d\n", seg[j].pba, seg[j].extent_bytes, seg[j].offset, seg[j].length);
+        if(check) {
+            for(size_t j = 0; j < seg_cnt; ++j) {
+                printf("PBA: %lu, extent_bytes: %d, offset: %d, length: %d\n", seg[j].pba, seg[j].extent_bytes, seg[j].offset, seg[j].length);
+            }
+            printf("\n");
         }
-        printf("\n");
         
         finegrained_read_params params;
         params.pba.pba_len = seg_cnt;
@@ -302,6 +315,7 @@ int main(int argc, char *argv[]) {
 
             if(memcmp(expected_buf + offset_in_block, res->value.value_val, bytes_size) != 0) {
                 fprintf(stderr, "Data mismatch at iteration %ld, logical offset %ld\n", i, src_logical);
+                fprintf(stderr, "expected: %.*s, rpc: %.*s\n\n", (int)bytes_size, expected_buf + offset_in_block, (int)bytes_size, res->value.value_val);
             }
         }
         
