@@ -74,8 +74,8 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
 
         if(offset < 0 || offset >= length) {
             fprintf(stderr, "offset error. should be greater or equal then 0, less than length: %d\n", length);
-            result = -1;
-            return &result;
+            out.value.value_len = 0;
+            return &out;
         }
 
         void *buf;
@@ -227,7 +227,7 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
 
         /************ Write End ************/
 
-        write_bytes_num += cur_write_bytes_num;
+        write_bytes_num += length;
         free(buf);
     }
 
