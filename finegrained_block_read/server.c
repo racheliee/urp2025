@@ -72,8 +72,8 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
         int offset = pbas[i].offset;
         int length = pbas[i].length;
 
-        if(offset < 0 || offset >= length) {
-            fprintf(stderr, "offset error. should be greater or equal then 0, less than length: %d\n", length);
+        if(offset < 0 || offset >= MAX_BYTES) {
+            fprintf(stderr, "offset error. should be greater or equal then 0, less than MAX_BYTES %d. current: %d\n", MAX_BYTES, offset);
             out.value.value_len = 0;
             return &out;
         }
@@ -164,8 +164,8 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
         int offset = pbas[i].offset;
         int length = pbas[i].length;
 
-        if(offset < 0 || offset >= length) {
-            fprintf(stderr, "offset error. should be greater or equal then 0, less than length: %d\n", length);
+        if(offset < 0 || offset >= MAX_BYTES) {
+            fprintf(stderr, "offset error. should be greater or equal then 0, less than MAX_BYTES %d. current: %d\n", MAX_BYTES, offset);
             result = -1;
             return &result;
         }
