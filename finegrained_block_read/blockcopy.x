@@ -2,8 +2,9 @@
 
 struct finegrained_pba {
     hyper pba;
+    int extent_bytes;
     int offset;
-    int nbytes;
+    int length;
 };
 
 struct finegrained_read_params {

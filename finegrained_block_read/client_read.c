@@ -91,8 +91,9 @@ static int get_pba(int fd, off_t logical, size_t length, finegrained_pba **out, 
 
 
         vec[n].pba    = pba_base;
+        vec[n].extent_bytes = (int)e->fe_length;
         vec[n].offset = (int)off_in_block;
-        vec[n].nbytes = (int)piece_len;
+        vec[n].length = (int)piece_len;
         n++;
     }
 
@@ -259,7 +260,7 @@ int main(int argc, char *argv[]) {
         /************ Fiemap0 End ************/
         
         for(size_t j = 0; j < seg_cnt; ++j) {
-            printf("PBA[%zu]: %lu, OFFSET: %d, NBYTES: %d\n", j, (unsigned long)seg[j].pba, seg[j].offset, seg[j].nbytes);
+            printf("PBA: %lu, extent_bytes: %d, offset: %d, length: %d\n", seg[j].pba, seg[j].extent_bytes, seg[j].offset, seg[j].length);
         }
         printf("\n");
         

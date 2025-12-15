@@ -68,11 +68,18 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
 
     for(int i = 0; i < pbas_len; ++i) {
         int64_t pba = pbas[i].pba;
+        int extent_bytes = pbas[i].extent_bytes;
         int offset = pbas[i].offset;
-        int nbytes = pbas[i].nbytes;
+        int length = pbas[i].length;
+
+        if(offset < 0 || offset >= length) {
+            fprintf(stderr, "offset error. should be greater or equal then 0, less than length: %d\n", length);
+            result = -1;
+            return &result;
+        }
 
         void *buf;
-        if (posix_memalign(&buf, ALIGN, nbytes) != 0) {
+        if (posix_memalign(&buf, ALIGN, extent_bytes) != 0) {
             fprintf(stderr, "posix_memalign failed\n");
             out.value.value_len = 0;
             return &out;
@@ -83,15 +90,15 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
         static struct timespec t_read0, t_read1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
 
-        ssize_t r = pread(fd, buf, nbytes, pba);
+        ssize_t r = pread(fd, buf, extent_bytes, pba);
         if (r == -1) { 
             perror("pread");
             free(buf);
             out.value.value_len = 0;
             return &out;
         }
-        if ((size_t)r != (size_t)nbytes) {
-            fprintf(stderr, "read only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)r);
+        if ((size_t)r != (size_t)extent_bytes) {
+            fprintf(stderr, "read only segments of extent_bytes: %zu expected, but only %zu\n", (size_t)extent_bytes, (size_t)r);
             free(buf);
             out.value.value_len = 0;
             return &out;
@@ -102,10 +109,9 @@ finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc
 
         /************ Read End ************/
 
-        int cur_read_bytes_num = min(nbytes-offset, target_read_bytes_num - read_bytes_num);
-        memcpy(read_value + read_bytes_num, (char*)buf + offset, cur_read_bytes_num);
+        memcpy(read_value + read_bytes_num, (char*)buf + offset, length);
         
-        read_bytes_num += cur_read_bytes_num;
+        read_bytes_num += length;
         free(buf);
     }
 
@@ -154,17 +160,18 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
 
     for(int i = 0; i < pbas_len; ++i) {
         int64_t pba = pbas[i].pba;
+        int extent_bytes = pbas[i].extent_bytes;
         int offset = pbas[i].offset;
-        int nbytes = pbas[i].nbytes;
+        int length = pbas[i].length;
 
-        if(offset < 0 || offset >= nbytes) {
-            fprintf(stderr, "offset error. less than 0 or greater than nbytes\n");
+        if(offset < 0 || offset >= length) {
+            fprintf(stderr, "offset error. should be greater or equal then 0, less than length: %d\n", length);
             result = -1;
             return &result;
         }
 
         void *buf;
-        if (posix_memalign(&buf, ALIGN, nbytes) != 0) {
+        if (posix_memalign(&buf, ALIGN, extent_bytes) != 0) {
             fprintf(stderr, "posix_memalign failed\n");
             result = -1;
             return &result;
@@ -175,15 +182,15 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
         static struct timespec t_read0, t_read1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
 
-        ssize_t r = pread(fd, buf, nbytes, pba);
+        ssize_t r = pread(fd, buf, extent_bytes, pba);
         if (r == -1) { 
             perror("pread");
             free(buf);
             result = -1;
             return &result;
         }
-        if ((size_t)r != (size_t)nbytes) {
-            fprintf(stderr, "read only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)r);
+        if ((size_t)r != (size_t)extent_bytes) {
+            fprintf(stderr, "read only segments of extent_bytes: %zu expected, but only %zu\n", (size_t)extent_bytes, (size_t)r);
             free(buf);
             result = -1;
             return &result;
@@ -194,23 +201,22 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
 
         /************ Read End ************/
 
-        int cur_write_bytes_num = min(nbytes-offset, target_write_bytes_num - write_bytes_num);
-        memcpy(buf+offset, write_value+write_bytes_num, cur_write_bytes_num);
+        memcpy(buf+offset, write_value+write_bytes_num, length);
         
         /************ Write ************/
 
         struct timespec t_write0, t_write1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write0);
 
-        ssize_t w = pwrite(fd, buf, nbytes, pba);
+        ssize_t w = pwrite(fd, buf, extent_bytes, pba);
         if(w == -1) {
             perror("pwrite");
             result = -1;
             free(buf);
             return &result;
         }
-        if (w < nbytes) {
-            fprintf(stderr, "written only segments of nbytes: %zu expected, but only %zu\n", (size_t)nbytes, (size_t)w);
+        if (w < extent_bytes) {
+            fprintf(stderr, "written only segments of extent_bytes: %zu expected, but only %zu\n", (size_t)extent_bytes, (size_t)w);
             result = -1;
             free(buf);
             return &result;
