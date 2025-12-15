@@ -27,7 +27,7 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return (double) ns / 1e9;
+    return (double) ns / 1e3;
 }
 
 static inline uint64_t align_down_u64(uint64_t x, uint64_t a) {
@@ -265,12 +265,12 @@ int main(int argc, char *argv[]) {
             continue;
         /************ Fiemap0 End ************/
         
-        if(check) {
+        /*if(check) {
             for(size_t j = 0; j < seg_cnt; ++j) {
                 printf("PBA: %lu, extent_bytes: %d, offset: %d, length: %d\n", seg[j].pba, seg[j].extent_bytes, seg[j].offset, seg[j].length);
             }
             printf("\n");
-        }
+        }*/
         
         finegrained_read_params params;
         params.pba.pba_len = seg_cnt;
@@ -306,7 +306,7 @@ int main(int argc, char *argv[]) {
             }
 
             ssize_t r = pread(fd, expected_buf, block_length, block_logical);
-            printf("Read %s from server.\n", res->value.value_val);
+            //printf("Read %s from server.\n", res->value.value_val);
             if(r != (ssize_t)block_length) {
                 fprintf(stderr, "pread for check failed\n");
                 free(expected_buf);
@@ -412,20 +412,20 @@ int main(int argc, char *argv[]) {
     printf("Check on: %s\n", check ? "true" : "false");
     printf("\n");
     printf("Server Result: \n");
-    printf("  Read Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns));
-    printf("  Write Elapsed time: %.3f seconds\n", get_elapsed(server_write_ns));
-    printf("  Other Elapsed time: %.3f seconds\n", get_elapsed(server_other_ns));
+    printf("  Read Elapsed time: %.3f microseconds\n", get_elapsed(server_read_ns));
+    printf("  Write Elapsed time: %.3f microseconds\n", get_elapsed(server_write_ns));
+    printf("  Other Elapsed time: %.3f microseconds\n", get_elapsed(server_other_ns));
     printf("\n");
     printf("Client Main Result: \n");
-    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(fiemap_ns));
-    printf("  RPC Elapsed time: %.3f seconds\n", get_elapsed(rpc_ns));
-    printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns));
+    printf("  Fiemap Elapsed time: %.3f microseconds\n", get_elapsed(fiemap_ns));
+    printf("  RPC Elapsed time: %.3f microseconds\n", get_elapsed(rpc_ns));
+    printf("  I/O Elapsed time: %.3f microseconds\n", get_elapsed(io_ns));
     printf("\n");
     printf("Summary: \n");
-    printf("  Server Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns));
-    printf("  Client Main time: %.3f seconds\n", get_elapsed(fiemap_ns + rpc_ns + io_ns));
+    printf("  Server Elapsed time: %.3f microseconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns));
+    printf("  Client Main time: %.3f microseconds\n", get_elapsed(fiemap_ns + rpc_ns + io_ns));
     printf("\n");
-    printf("  Total Elapsed time: %.3f seconds\n", get_elapsed(total_ns));
+    printf("  Total Elapsed time: %.3f microseconds\n", get_elapsed(total_ns));
     printf("  Approx throughput: %.2f MB/s\n", throughput_mbps);
     //printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
     printf("------------------------------------------\n");

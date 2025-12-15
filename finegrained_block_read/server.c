@@ -29,6 +29,7 @@ static uint64_t g_other_ns = 0;
 finegrained_read_returns *read_1_svc(finegrained_read_params *params, struct svc_req *rqstp) {
     // result of read value
     static char read_value[MAX_BYTES];
+    //memset(read_value, 0, sizeof(char) * MAX_BYTES);
 
     // return value
     static finegrained_read_returns out;
