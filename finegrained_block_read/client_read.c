@@ -126,7 +126,6 @@ static void usage(const char *prog) {
 
 static uint64_t g_fiemap_ns = 0;
 static uint64_t g_rpc_total_ns = 0;
-static uint64_t g_iter_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -231,10 +230,6 @@ int main(int argc, char *argv[]) {
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
-        struct timespec t_iter0, t_iter1, t_total;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
-        t_total=t_iter0;
-
         if(log) {
             if(i % 1000 == 0) {
                 struct timespec now_ts;
@@ -285,21 +280,37 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "RPC read failed\n");
             break;
         }
-        if(check) {
+        if(check) {    
+            off_t block_logical = src_logical - (src_logical % BLOCK_SIZE);
+            off_t block_length = ((src_logical % BLOCK_SIZE) + bytes_size + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
+
+            off_t offset_in_block = src_logical - block_logical;
+
+            char* expected_buf = malloc(block_length);
+            if(!expected_buf) {
+                perror("malloc failed");
+                break;
+            }
+
+            ssize_t r = pread(fd, expected_buf, block_length, block_logical);
             printf("Read %s from server.\n", res->value.value_val);
-            // Need to check with actual data
+            if(r != (ssize_t)block_length) {
+                fprintf(stderr, "pread for check failed\n");
+                free(expected_buf);
+                break;
+            }
+
+            if(memcmp(expected_buf + offset_in_block, res->value.value_val, bytes_size) != 0) {
+                fprintf(stderr, "Data mismatch at iteration %ld, logical offset %ld\n", i, src_logical);
+            }
         }
         
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
 	/************ Time Check End ************/
 
         uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1); //이번 iteration에서 rpc에 걸린 시간
-	    uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
 
         g_fiemap_ns += fiemap_ns0; //iteration 중 fiemap에 소요한 시간 총합
         g_rpc_total_ns += rpc_total_ns; //iteration 중 rpc에 소요한 시간 총합
-	    g_iter_ns += iter_total_ns; //총 시간에 이번 iteration 시간 더함
-
     }
 
     if(log) {
@@ -311,6 +322,10 @@ int main(int argc, char *argv[]) {
 
         fprintf(stderr, "\rFinegrained Read RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
     }
+
+    struct timespec t_total1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
+
 
     /************ End Stage ************/
     //free(buf);
@@ -328,16 +343,16 @@ int main(int argc, char *argv[]) {
     clnt_destroy(clnt);
 
     //per iteration 시간 구하기 위해 iterations로 나눔
-    uint64_t server_read_ns = (res->server_read_time);
-    uint64_t server_write_ns = (res->server_write_time);
-    uint64_t server_other_ns = (res->server_other_time);
+    uint64_t server_read_ns = res->server_read_time;
+    uint64_t server_write_ns = res->server_write_time;
+    uint64_t server_other_ns = res->server_other_time;
+    uint64_t server_total_ns = server_read_ns + server_write_ns + server_other_ns;
 
     // Calculate elapsed time
-    //uint64_t total_ns = ns_diff(t_total0, t_total1);
-    uint64_t total_ns = g_iter_ns; //total_ns를 iteration 자체에만 걸린 시간으로 바꿈!! end, prep 제외
-    uint64_t fiemap_ns = g_fiemap_ns; //fiemap 두 번 걸린 시간 합
-    uint64_t rpc_ns = g_rpc_total_ns - server_read_ns - server_write_ns - server_other_ns; //rpc 자체에만 드는 오버헤드
-    uint64_t io_ns = total_ns - fiemap_ns - rpc_ns;
+    uint64_t total_ns = ns_diff(t_total0, t_total1); //total_ns를 iteration 자체에만 걸린 시간으로 바꿈!! end, prep 제외
+    uint64_t fiemap_ns = g_fiemap_ns; //fiemap 걸린 시간 합
+    uint64_t rpc_ns = g_rpc_total_ns - server_total_ns; //rpc 자체에만 드는 오버헤드
+    uint64_t io_ns = total_ns - fiemap_ns - rpc_ns - server_total_ns;
 	
     // 계산 오류 핸들러.
     if(fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
@@ -345,18 +360,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    // Calculate statistics
+    double throughput_mbps = (bytes_size / (1024.0 * 1024.0)) / get_elapsed(total_ns);
+
     server_read_ns /= iterations;
     server_write_ns /= iterations;
     server_other_ns /= iterations;
+    server_total_ns /= iterations;
     total_ns /= iterations;
     fiemap_ns /= iterations;
     rpc_ns /= iterations;
     io_ns /= iterations;
-    
-
-    // Calculate statistics
-    long long total_bytes = (long long)iterations * bytes_size;
-    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / get_elapsed(total_ns);
 
     if(csv) {
         // byte_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
