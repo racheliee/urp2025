@@ -121,12 +121,13 @@ exit:
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-l] [-t]\n"
+        "Usage: %s <server_eternity> <file_path> [-b block_size] [-n iterations] [-s seed] [-c] [-p] [-l] [-t]\n"
         "Options:\n"
         "  -b bytes        Size of content (default: 8)\n"
         "  -n iterations   Number of random copies (default: 1000000)\n"
         "  -s seed         Seed Number (default: -1)\n"
         "  -c check        Check read text is true (default: false)\n"
+        "  -p print        Print read text (default: false)\n"
         "  -l log          Show Log (default: false)\n"
         "  -t test         Print result as csv form\n",
         prog);
@@ -152,11 +153,12 @@ int main(int argc, char *argv[]) {
     long iterations = DEFAULT_ITERS;
     long seed = time(NULL);
     int check = 0;
+    int print = 0;
     int log = 0;
     int csv = 0;
 
     int opt;
-    while ((opt = getopt(argc, argv, "b:n:s:clt")) != -1) {
+    while ((opt = getopt(argc, argv, "b:n:s:cplt")) != -1) {
         switch (opt) {
         case 'b': {
             bytes_size = strtoul(optarg, NULL, 10);
@@ -177,6 +179,10 @@ int main(int argc, char *argv[]) {
         }
         case 'c': {
             check = 1;
+            break;
+        }
+        case 'p': {
+            print = 1;
             break;
         }
         case 'l':
@@ -292,7 +298,7 @@ int main(int argc, char *argv[]) {
             }
 
             ssize_t r = pread(fd, expected_buf, block_length, block_logical);
-;
+
             if(r != (ssize_t)block_length) {
                 fprintf(stderr, "pread for check failed\n");
                 free(expected_buf);
@@ -304,6 +310,9 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "expected: %.*s, rpc: %.*s\n\n", (int)bytes_size, expected_buf + offset_in_block, (int)bytes_size, res->value.value_val);
             }
             free(expected_buf);
+        }
+        if(print) {
+            printf("%ld\t%.*s\n", i, (int)bytes_size, res->value.value_val);
         }
         
 	/************ Time Check End ************/
@@ -374,7 +383,7 @@ int main(int argc, char *argv[]) {
     io_ns /= iterations;
 
     if(csv) {
-        // byte_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
+        // byte_num, iteration, # of bytes read, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
         printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             bytes_size, 
             iterations, 

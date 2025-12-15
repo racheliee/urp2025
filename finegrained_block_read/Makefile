@@ -2,7 +2,7 @@ RPCGEN = rpcgen
 CC = gcc
 CFLAGS = -O2 -Wall -I/usr/include/tirpc
 LDLIBS  += -lnsl -ltirpc
-TARGETS = client_read server client_write
+TARGETS = client_read client_write server baseline_read baseline_write
 
 all: $(TARGETS)
 
@@ -21,8 +21,11 @@ client_write: client_write.c client.h blockcopy_clnt.c blockcopy_xdr.c
 server: server.c server.h blockcopy_svc.c blockcopy_xdr.c
 	$(CC) $(CFLAGS) -o server server.c blockcopy_svc.c blockcopy_xdr.c $(LDLIBS)
 
-baseline: baseline.c
-	$(CC) $(CFLAGS) -o baseline baseline.c
+baseline_read: baseline_read.c baseline.h
+	$(CC) $(CFLAGS) -o baseline_read baseline_read.c
+
+baseline_write: baseline_write.c baseline.h
+	$(CC) $(CFLAGS) -o baseline_write baseline_write.c
 
 create_file: create_file.c
 	$(CC) $(CFLAGS) -o create_file create_file.c

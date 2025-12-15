@@ -235,6 +235,8 @@ int main(int argc, char *argv[]) {
     for(size_t i = 0; i < bytes_size; ++i) {
         write_buf[i] = 'A' + (char)(rand() % 26);
     }
+
+    printf("Write buffer: %.*s\n", (int)bytes_size, write_buf);
     
     /************ Prepare Stage End ************/
 
@@ -256,7 +258,7 @@ int main(int argc, char *argv[]) {
                 double elapsed = (now_ts.tv_sec - t_total0.tv_sec)
                                 + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
-                fprintf(stderr, "\rFinegrained Read RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", i, iterations, (double) i / iterations * 100, elapsed);
+                fprintf(stderr, "\rFinegrained Write RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", i, iterations, (double) i / iterations * 100, elapsed);
             }
         }
         
@@ -333,7 +335,7 @@ int main(int argc, char *argv[]) {
         double elapsed = (now_ts.tv_sec - t_total0.tv_sec)
                         + (now_ts.tv_nsec - t_total0.tv_nsec) / 1e9;
 
-        fprintf(stderr, "\rFinegrained Read RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
+        fprintf(stderr, "\rFinegrained Write RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs", iterations, iterations, (double) 100, elapsed);
     }
 
     struct timespec t_total1;
@@ -386,7 +388,7 @@ int main(int argc, char *argv[]) {
     io_ns /= iterations;
 
     if(csv) {
-        // byte_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
+        // byte_num, iteration, # of bytes write, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
         printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             bytes_size, 
             iterations, 
@@ -403,7 +405,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     printf("\n\n");
-    printf("------------ Finegrained Read RPC Test Results ------------\n");
+    printf("------------ Finegrained Write RPC Test Results ------------\n");
     printf("Iterations attempted: %ld\n", iterations);
     printf("Byte size: %zu bytes\n", bytes_size);
     printf("Seed: %ld\n", seed);
