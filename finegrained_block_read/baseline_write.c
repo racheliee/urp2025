@@ -249,6 +249,7 @@ int main(int argc, char *argv[]) {
     double throughput_mbps = (bytes_size / (1024.0 * 1024.0)) / get_elapsed(total_ns);
 
     read_ns /= iterations;
+	write_ns /= iterations;
     io_ns /= iterations;
     total_ns /= iterations;
 
