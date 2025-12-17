@@ -16,11 +16,6 @@
 #include "blockcopy.h"
 #include "client.h"
 
-typedef struct {
-    uint64_t pba;
-    size_t len;
-} pba_seg;
-
 static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
     return (uint64_t)(b.tv_sec - a.tv_sec) * 1000000000ull
          + (uint64_t)(b.tv_nsec - a.tv_nsec);
