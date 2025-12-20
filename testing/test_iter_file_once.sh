@@ -78,8 +78,8 @@ while true; do
                 echo "----- START $case_id -----"
 
                 # (2) client: a.txt
-                echo "[client] sudo ./client eternity2 $a -n $it -b $bn -s $seed"
-                sudo ./client eternity2 "$a" -n "$it" -b "$bn" -s "$seed" -t \
+                echo "[client] sudo ./client 10.0.0.2 $a -n $it -b $bn -s $seed"
+                sudo ./client 10.0.0.2 "$a" -n "$it" -b "$bn" -s "$seed" -t \
                     > >(stdbuf -oL tee -a "$RPC_LOG_FILE" >/dev/null) \
                     2> >(stdbuf -eL tee -a "$RPC_LOG_FILE" >&2)
                 flush_caches
