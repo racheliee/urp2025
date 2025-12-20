@@ -230,6 +230,12 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
         free(buf);
     }
 
+    if (fsync(fd) == -1) {
+        perror("fsync");
+        result = -1;
+        return &result;
+    }
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
 
     uint64_t total_ns = ns_diff(t_total0, t_total1);
