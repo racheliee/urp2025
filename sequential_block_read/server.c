@@ -95,6 +95,13 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
         goto exit;
     }
 
+    if (fsync(fd) < 0) {
+    perror("fsync");
+    result = -1;
+    free(buf);
+    goto exit;
+    }
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
     free(buf);
 
