@@ -15,7 +15,10 @@
 
 #include "blockcopy.h"
 #include "client.h"
-
+/*
+ * per iteration time measuring
+ * 최종
+ * */
 typedef struct {
     uint64_t pba;
     size_t len;
@@ -26,8 +29,8 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
          + (uint64_t)(b.tv_nsec - a.tv_nsec);
 }
 
-static inline double get_elapsed(uint64_t ns) {
-    return (double) ns / 1e9;
+static inline double get_elapsed(uint64_t ns, int iter) {
+    return (double) ns / 1e3 / iter; //마이크로초로 변환하고, iterations로 나눔
 }
 
 /* helper to get physical block address from logical offset */
@@ -104,6 +107,7 @@ static void usage(const char *prog) {
 
 static uint64_t g_fiemap_ns = 0;
 static uint64_t g_rpc_total_ns = 0;
+static uint64_t g_iter_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -154,16 +158,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-/************ Time Check Start ************/
-
-    struct timespec t_total0, t_total1;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
     /************ Prepare Stage ************/
-
-    struct timespec t_prep0, t_prep1;
-    t_prep0 = t_total0;
-
     srand(seed);
 
     // RPC connect
@@ -204,12 +200,18 @@ int main(int argc, char *argv[]) {
         exit(1);
     }*/
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
-
     /************ Prepare Stage End ************/
+
+    //테스트 시작 전 시간 측정 (log용)
+    struct timespec t_total0;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
     // Test Start
     for (long i = 0; i < iterations; i++) {
+
+        struct timespec t_iter0, t_iter1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
+
         if(log) {
             if(i % 1000 == 0) {
                 struct timespec now_ts;
@@ -246,7 +248,7 @@ int main(int argc, char *argv[]) {
         if (get_pba(fd, dst_logical, block_size, &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0)
             continue;
         /************ Fiemap1 End ************/
-        
+
         if(src_pba_cnt != dst_pba_cnt) {
             fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
             fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n", src_pba_cnt, dst_pba_cnt);
@@ -280,15 +282,20 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "RPC write failed at PBA %lu to %lu\n", (unsigned long)src_pba[0].pba, dst_pba[0].pba);
             break;
         }
-        
 
-        uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
+        /************ Time Check End ************/
+
+        uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1); //이번 iteration에서 rpc에 걸린 시간
+        uint64_t iter_total_ns = ns_diff(t_iter0, t_iter1);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns0, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_fiemap_ns, fiemap_ns1, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_rpc_total_ns, rpc_total_ns, memory_order_relaxed);
 
-        g_fiemap_ns += fiemap_ns0 + fiemap_ns1;
-        g_rpc_total_ns += rpc_total_ns;
+        g_fiemap_ns += fiemap_ns0 + fiemap_ns1; //iteration 중 fiemap에 소요한 시간 총합
+        g_rpc_total_ns += rpc_total_ns; //iteration 중 rpc에 소요한 시간 총합
+        g_iter_ns += iter_total_ns; //총 시간에 이번 iteration 시간 더함
+
     }
 
     if(log) {
@@ -302,20 +309,11 @@ int main(int argc, char *argv[]) {
     }
 
     /************ End Stage ************/
-
-    struct timespec t_end0, t_end1;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
-
     //free(buf);
     close(fd);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
-    t_end1 = t_total1;
-
     /************ End Stage End ************/
 
-/************ Time Check End ************/
-    
+
     // Get server time
     get_server_ios *res = get_time_1(NULL, clnt);
     if (res == NULL) {
@@ -324,43 +322,56 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     clnt_destroy(clnt);
-    uint64_t server_read_ns = res->server_read_time;
-    uint64_t server_write_ns = res->server_write_time;
-    uint64_t server_other_ns = res->server_other_time;
+
+    //per iteration 시간 구하기 위해 iterations로 나눔
+    uint64_t server_read_ns = (res->server_read_time);
+    uint64_t server_write_ns = (res->server_write_time);
+    uint64_t server_other_ns = (res->server_other_time);
+    uint64_t server_total_ns = server_read_ns + server_write_ns + server_other_ns;
 
     // Calculate elapsed time
-    uint64_t total_ns = ns_diff(t_total0, t_total1);
-    uint64_t prep_ns = ns_diff(t_prep0, t_prep1);
-    uint64_t end_ns = ns_diff(t_end0, t_end1);
-    uint64_t fiemap_ns = g_fiemap_ns;
-    uint64_t rpc_ns = g_rpc_total_ns - server_read_ns - server_write_ns - server_other_ns;
-    uint64_t io_ns = total_ns - prep_ns - end_ns - fiemap_ns - g_rpc_total_ns;
+    //uint64_t total_ns = ns_diff(t_total0, t_total1);
+    uint64_t total_ns = g_iter_ns; //total_ns를 iteration 자체에만 걸린 시간으로 바꿈!! end, prep 제외
+    uint64_t fiemap_ns = g_fiemap_ns; //fiemap 두 번 걸린 시간 합
+    uint64_t rpc_ns = g_rpc_total_ns - server_total_ns; //rpc 자체 오버헤드 + network overhead
+    uint64_t io_ns = total_ns - fiemap_ns - rpc_ns - server_total_ns;
 
-    if(prep_ns + end_ns + fiemap_ns + rpc_ns + server_read_ns + server_write_ns + server_other_ns + io_ns != total_ns) {
+    // 계산 오류 핸들러.
+    if(fiemap_ns + rpc_ns + server_total_ns + io_ns != total_ns) {
         fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
+        //printf("fiemap_ns : %.3f\nrpc_ns : %.3f\nio_ns : %.3f\n", fiemap_ns, rpc_ns, io_ns);
+        //printf("%.3f expected, but %.3f\n", fiemap_ns+rpc_ns+io_ns, total_ns);
         exit(1);
     }
+/*
+    server_read_ns /= iterations;
+    server_write_ns /= iterations;
+    server_other_ns /= iterations;
+    total_ns /= iterations;
+    fiemap_ns /= iterations;
+    rpc_ns /= iterations;
+    io_ns /= iterations;
+  */
 
     // Calculate statistics
     long long total_bytes = (long long)iterations * block_size;
-    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / get_elapsed(total_ns);
+    double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / get_elapsed(total_ns, iterations);
 
     if(csv) {
-        // block_num, iteration, # of block_copies, file_size, Server Read Time, Server Write Time, Server Other Time, Prep Time, End Time, Fiemap time, RPC time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
-            block_size/ALIGN, 
-            iterations, 
-            block_size/ALIGN * iterations, 
+        // block_num, iteration, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+            block_size/ALIGN,
+            iterations,
+            block_size/ALIGN * iterations,
             (double)filesize / (1024.0 * 1024.0 * 1024.0),
-            get_elapsed(server_read_ns),
-            get_elapsed(server_write_ns),
-            get_elapsed(server_other_ns),
-            get_elapsed(prep_ns),
-            get_elapsed(end_ns),
-            get_elapsed(fiemap_ns),
-            get_elapsed(rpc_ns),
-            get_elapsed(io_ns),
-            get_elapsed(total_ns)
+            // 밀리초로 변환하고 iterations로 나눔
+            get_elapsed(server_read_ns, iterations),
+            get_elapsed(server_write_ns,iterations),
+            get_elapsed(server_other_ns, iterations),
+            get_elapsed(fiemap_ns, iterations),
+            get_elapsed(rpc_ns, iterations),
+            get_elapsed(io_ns, iterations),
+            get_elapsed(total_ns, iterations)
         );
         return 0;
     }
@@ -372,25 +383,20 @@ int main(int argc, char *argv[]) {
     printf("Log on: %s\n", log ? "true" : "false");
     printf("\n");
     printf("Server Result: \n");
-    printf("  Read Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns));
-    printf("  Write Elapsed time: %.3f seconds\n", get_elapsed(server_write_ns));
-    printf("  Other Elapsed time: %.3f seconds\n", get_elapsed(server_other_ns));
+    printf("  Read Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns, iterations));
+    printf("  Write Elapsed time: %.3f seconds\n", get_elapsed(server_write_ns, iterations));
+    printf("  Other Elapsed time: %.3f seconds\n", get_elapsed(server_other_ns, iterations));
     printf("\n");
     printf("Client Main Result: \n");
-    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(fiemap_ns));
-    printf("  RPC Elapsed time: %.3f seconds\n", get_elapsed(rpc_ns));
-    printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns));
-    printf("\n");
-    printf("Client Other Result: \n");
-    printf("  Prepare Elapsed time: %.3f seconds\n", get_elapsed(prep_ns));
-    printf("  End Elapsed time: %.3f seconds\n", get_elapsed(end_ns));
+    printf("  Fiemap Elapsed time: %.3f seconds\n", get_elapsed(fiemap_ns, iterations));
+    printf("  RPC Elapsed time: %.3f seconds\n", get_elapsed(rpc_ns, iterations));
+    printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns, iterations));
     printf("\n");
     printf("Summary: \n");
-    printf("  Server Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns));
-    printf("  Client Main time: %.3f seconds\n", get_elapsed(fiemap_ns + rpc_ns + io_ns));
-    printf("  Client Other time: %.3f seconds\n", get_elapsed(prep_ns + end_ns));
+    printf("  Server Elapsed time: %.3f seconds\n", get_elapsed(server_read_ns + server_write_ns + server_other_ns, iterations));
+    printf("  Client Main time: %.3f seconds\n", get_elapsed(fiemap_ns + rpc_ns + io_ns, iterations));
     printf("\n");
-    printf("  Total Elapsed time: %.3f seconds\n", get_elapsed(total_ns));
+    printf("  Total Elapsed time: %.3f seconds\n", get_elapsed(total_ns, iterations));
     printf("  Approx throughput: %.2f MB/s\n", throughput_mbps);
     //printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
     printf("------------------------------------------\n");
