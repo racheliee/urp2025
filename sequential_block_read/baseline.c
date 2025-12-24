@@ -36,7 +36,7 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return (double) ns / 1e9;
+    return (double) ns / 1e3;
 }
 
 // static _Atomic uint64_t g_read_ns  = 0;
@@ -240,8 +240,15 @@ int main(int argc, char *argv[]) {
     long long total_bytes = (long long)iterations * block_size;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0)) / get_elapsed(total_ns);
 
+    read_ns /= iterations;
+    write_ns /= iterations;
+    io_ns /= iterations;
+    total_ns /= iterations;
+
+
+
     if(csv) {
-        // block_num, iteration, # of block_copies, file_size, read Time, write Time, Prep Time, End Time, I/O time, Total time
+        // block_num, iteration, # of block_copies, file_size, read Time, write Time, I/O time, Total time
         printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             block_size/ALIGN, 
             iterations, 
