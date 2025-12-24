@@ -202,6 +202,12 @@ int main(int argc, char *argv[]) {
             break;
         }
 
+	if (fsync(fd) == -1) {
+    	    perror("fsync");
+	    free(buf);
+	    break;
+	}
+
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
         
         /************ Write End ************/

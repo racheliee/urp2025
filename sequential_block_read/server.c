@@ -95,6 +95,7 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
         goto exit;
     }
 
+
     if (fsync(fd) < 0) {
     perror("fsync");
     result = -1;
@@ -103,6 +104,7 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
+    t_total1=t_write1;
     free(buf);
 
     /************ Write End ************/
@@ -121,7 +123,6 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
     g_write_ns += write_ns;
     g_other_ns += other_ns;
 
-    t_total1 = t_write1;
 /************ Time Check End ************/
 
 exit:

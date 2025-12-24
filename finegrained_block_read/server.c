@@ -157,6 +157,8 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
     int pbas_len = params->pba.pba_len;
     finegrained_pba* pbas = params->pba.pba_val;
 
+
+        struct timespec t_write0, t_write1;
     for(int i = 0; i < pbas_len; ++i) {
         int64_t pba = pbas[i].pba;
         int extent_bytes = pbas[i].extent_bytes;
@@ -204,7 +206,6 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
         
         /************ Write ************/
 
-        struct timespec t_write0, t_write1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write0);
 
         ssize_t w = pwrite(fd, buf, extent_bytes, pba);
@@ -221,9 +222,7 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
             return &result;
         }
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
-        write_ns += ns_diff(t_write0, t_write1);
-
+       
         /************ Write End ************/
 
         write_bytes_num += length;
@@ -235,6 +234,8 @@ int *write_1_svc(finegrained_write_params *params, struct svc_req *rqstp) {
         result = -1;
         return &result;
     }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
+    write_ns += ns_diff(t_write0, t_write1);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
 

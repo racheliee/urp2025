@@ -178,6 +178,12 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
+	if (fsync(fd) == -1) {
+    	    perror("fsync");
+	    free(buf);
+	    break;
+	}
+
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
 
         /************ Write End ************/
@@ -236,15 +242,15 @@ int main(int argc, char *argv[]) {
 
     if(csv) {
         // block_num, iteration, # of block_copies, file_size, read Time, write Time, Prep Time, End Time, I/O time, Total time
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f\n", 
             block_size/ALIGN, 
             iterations, 
             block_size/ALIGN * iterations, 
             (double)filesize / (1024.0 * 1024.0 * 1024.0),
             get_elapsed(read_ns),
             get_elapsed(write_ns),
-            get_elapsed(prep_ns),
-            get_elapsed(end_ns),
+            //get_elapsed(prep_ns),
+            //get_elapsed(end_ns),
             get_elapsed(io_ns),
             get_elapsed(total_ns)
         );
