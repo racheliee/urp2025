@@ -44,6 +44,7 @@ static inline double get_elapsed(uint64_t ns) {
 
 static uint64_t g_read_ns = 0;
 static uint64_t g_write_ns = 0;
+static uint64_t g_iter_ns = 0;
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -92,16 +93,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-/************ Time Check Start ************/
-
-    struct timespec t_total0, t_total1;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
-
     /************ Prepare Stage ************/
-
-    struct timespec t_prep0, t_prep1;
-    t_prep0 = t_total0;
-
     srand(seed);
 
     int fd = open(path, O_RDWR | O_DIRECT);
@@ -122,12 +114,17 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "posix_memalign failed\n");
         return 1;
     }
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
-
     /************ Prepare Stage End ************/
 
+    /************ Time Check Start ************/
+    struct timespec t_total0, t_total1;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
+
     for (long i = 0; i < iterations; i++) {
+	//variables to calculate each iteration time
+	struct timespec t_iter0, t_iter1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);   
+    
         if(log) {
             if(i % 1000 == 0) {
                 struct timespec now_ts;
@@ -187,15 +184,20 @@ int main(int argc, char *argv[]) {
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
 
         /************ Write End ************/
+	
+	t_iter1 = t_write1;
+	/************ Iteration End**********/
 
         uint64_t read_ns = ns_diff(t_read0, t_read1);
         uint64_t write_ns = ns_diff(t_write0, t_write1);
+	uint64_t iter_ns = ns_diff(t_iter0, t_iter1);
 
         // atomic_fetch_add_explicit(&g_read_ns, read_ns, memory_order_relaxed);
         // atomic_fetch_add_explicit(&g_write_ns, write_ns, memory_order_relaxed);
 
         g_read_ns += read_ns;
         g_write_ns += write_ns;
+	g_iter_ns += iter_ns;
     }
 
     if(log) {
@@ -209,29 +211,23 @@ int main(int argc, char *argv[]) {
     }
 
     /************ End Stage ************/
-
-    struct timespec t_end0, t_end1;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
-
+    
     free(buf);
     close(fd);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
-    t_end1 = t_total1;
-
     /************ End Stage End ************/
-
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
 /************ Time Check End ************/
 
     // Calculate elapsed time
-    uint64_t total_ns = ns_diff(t_total0, t_total1);
-    uint64_t prep_ns = ns_diff(t_prep0, t_prep1);
-    uint64_t end_ns = ns_diff(t_end0, t_end1);
+    //uint64_t prep_ns = ns_diff(t_prep0, t_prep1);
+    //uint64_t end_ns = ns_diff(t_end0, t_end1);
     uint64_t read_ns = g_read_ns;
     uint64_t write_ns = g_write_ns;
-    uint64_t io_ns = total_ns - prep_ns - end_ns - read_ns - write_ns;
+    uint64_t io_ns = g_iter_ns - read_ns - write_ns;
+    uint64_t total_ns = g_iter_ns;
 
-    if(prep_ns + end_ns + read_ns + write_ns + io_ns != total_ns) {
+    if(read_ns + write_ns + io_ns != total_ns) {
         fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
         exit(1);
     }
@@ -275,15 +271,10 @@ int main(int argc, char *argv[]) {
     printf("  Write Elapsed time: %.3f seconds\n", get_elapsed(write_ns));
     printf("  I/O Elapsed time: %.3f seconds\n", get_elapsed(io_ns));
     printf("\n");
-    printf("Client Other Result: \n");
-    printf("  Prepare Elapsed time: %.3f seconds\n", get_elapsed(prep_ns));
-    printf("  End Elapsed time: %.3f seconds\n", get_elapsed(end_ns));
-    printf("\n");
     printf("Summary: \n");
     printf("  Client Main time: %.3f seconds\n", get_elapsed(read_ns + write_ns + io_ns));
-    printf("  Client Other time: %.3f seconds\n", get_elapsed(prep_ns + end_ns));
     printf("\n");
-    printf("  Total Elapsed time: %.3f seconds\n", get_elapsed(total_ns));
+    printf("  Total Iter time: %.3f seconds\n", get_elapsed(total_ns));
     printf("  Approx throughput: %.2f MB/s\n", throughput_mbps);
     //printf("  Operations per second: %.2f ops/s\n", ops_per_sec);
     printf("------------------------------------------\n");
