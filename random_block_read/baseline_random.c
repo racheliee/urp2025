@@ -24,7 +24,7 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return (double)ns / 1e9;
+    return (double)ns / 1e3;
 }
 
 static void usage(const char *prog) {
@@ -52,12 +52,13 @@ int main(int argc, char *argv[]) {
     long seed = time(NULL);
     int log = 0;
     int csv = 0;
+    int block_num = 1;
 
     int opt;
     while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
-            int block_num = strtoul(optarg, NULL, 10);
+            block_num = strtoul(optarg, NULL, 10);
             if (block_num <= 0) {
                 fprintf(stderr, "Block size must be positive.\n");
                 return 1;
@@ -87,10 +88,9 @@ int main(int argc, char *argv[]) {
 
     srand(seed);
 
-    timespec_t t_total0, t_total1;
+    timespec_t t_total0;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
-    timespec_t t_prep0 = t_total0, t_prep1;
 
     int fd = open(path, O_RDWR | O_DIRECT | O_SYNC);
     if (fd < 0) {
@@ -112,35 +112,27 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // create a set of blocks
-    off_t* src_blocks = malloc(sizeof(off_t) * block_num);
-    off_t* dst_blocks = malloc(sizeof(off_t) * block_num);
-    if (!src_blocks || !dst_blocks) {
-    	perror("malloc");
-	return 1;
-    }
-
-    // no duplicate 처리 필요할 수도...?
-    for (int j = 0; j < block_num; j++) {
-    	src_blocks[j] = rand() % max_units;
-    	do {
-        	dst_blocks[j] = rand() % max_units;
-    	} while (dst_blocks[j] == src_blocks[j]);
-    }
-
+    
     void *buf;
-    if (posix_memalign(&buf, ALIGN, block_num * (ALIGN)) != 0) {
+    if (posix_memalign(&buf, ALIGN, block_size) != 0) {
         perror("posix_memalign");
         return 1;
     }
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
 
     uint64_t total_read_ns = 0;
     uint64_t total_write_ns = 0;
-    uint64_t total_io_ns = 0;
+    uint64_t total_iter_ns = 0;
 
+    uint64_t iter_read_ns = 0;
+    uint64_t iter_write_ns = 0;
+    // ******** Preparation End ********
+    
+    //************ Iteration Start *************
     for (long i = 0; i < iterations; i++) {
+	timespec_t t_iter0, t_iter1;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter0);
+
         if (log && (i % 1000 == 0)) {
             timespec_t now;
             clock_gettime(CLOCK_MONOTONIC_RAW, &now);
@@ -150,83 +142,78 @@ int main(int argc, char *argv[]) {
                     i, iterations, (double)i/iterations * 100.0, elapsed);
         }
 
-        off_t src_blk = rand() % max_blocks;
-        off_t dst_blk = rand() % max_blocks;
-        while (dst_blk == src_blk)
-            dst_blk = rand() % max_blocks;
+	for (int j = 0 ; j < block_num ; j++) {
 
-        off_t src_off = src_blk * block_size;
-        off_t dst_off = dst_blk * block_size;
+            off_t src_blk = rand() % max_blocks;
+            off_t dst_blk = rand() % max_blocks;
+	    while (dst_blk == src_blk) {dst_blk = rand() % max_blocks;}
 
-        timespec_t t_io0, t_io1;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_io0);
+            off_t src_off = src_blk * ALIGN;
+            off_t dst_off = dst_blk * ALIGN;
 
-        /* READ */
-        timespec_t t_r0, t_r1;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_r0);
-        ssize_t r = pread(fd, buf, block_size, src_off);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_r1);
+            /* READ */
+            timespec_t t_r0, t_r1;
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_r0);
+            ssize_t r = pread(fd, (char*)buf + (size_t)j * (ALIGN), ALIGN, src_off);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_r1);
 
-        if (r != (ssize_t)block_size) {
-            fprintf(stderr, "pread failed at %ld: %s\n", (long)src_off, strerror(errno));
-            break;
+            if (r != (ssize_t)ALIGN) {
+                fprintf(stderr, "pread failed at %ld: %s\n", (long)src_off, strerror(errno));
+                break;
+            }
+            iter_read_ns = ns_diff(t_r0, t_r1);
+
+            /* WRITE */
+            timespec_t t_w0, t_w1;
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_w0);
+            ssize_t w = pwrite(fd, (char*)buf + (size_t)j * (ALIGN), ALIGN, dst_off);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &t_w1);
+
+            if (w != (ssize_t)ALIGN) {
+                fprintf(stderr, "pwrite failed at %ld: %s\n", (long)dst_off, strerror(errno));
+                break;
+            }
+            iter_write_ns = ns_diff(t_w0, t_w1);
+	    total_read_ns += iter_read_ns;
+            total_write_ns += iter_write_ns;
+
         }
-        uint64_t read_ns = ns_diff(t_r0, t_r1);
 
-        /* WRITE */
-        timespec_t t_w0, t_w1;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_w0);
-        ssize_t w = pwrite(fd, buf, block_size, dst_off);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_w1);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
 
-        if (w != (ssize_t)block_size) {
-            fprintf(stderr, "pwrite failed at %ld: %s\n", (long)dst_off, strerror(errno));
-            break;
-        }
-        uint64_t write_ns = ns_diff(t_w0, t_w1);
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_io1);
-        uint64_t io_ns = ns_diff(t_io0, t_io1);
-
-        total_read_ns += read_ns;
-        total_write_ns += write_ns;
-        total_io_ns += io_ns;
+        	total_iter_ns += ns_diff(t_iter0, t_iter1);
     }
 
-    timespec_t t_end0, t_end1;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_end0);
-
+    //************** Iteration End **************
     free(buf);
     close(fd);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t_total1);
-    t_end1 = t_total1;
 
-    uint64_t total_ns = ns_diff(t_total0, t_total1);
-    uint64_t prep_ns  = ns_diff(t_prep0, t_prep1);
-    uint64_t end_ns   = ns_diff(t_end0, t_end1);
-
+    uint64_t total_ns = total_iter_ns;
     uint64_t read_ns  = total_read_ns;
     uint64_t write_ns = total_write_ns;
 
-    uint64_t io_ns = total_io_ns - read_ns - write_ns;
-    if (prep_ns + end_ns + total_io_ns != total_ns) {
-        uint64_t accounted = prep_ns + end_ns + read_ns + write_ns;
+    uint64_t io_ns = total_ns - read_ns - write_ns;
+    if (io_ns + read_ns + write_ns != total_ns) {
+        uint64_t accounted =  read_ns + write_ns;
         io_ns = (total_ns > accounted) ? (total_ns - accounted) : 0;
     }
+
+    total_ns /= iterations;
+    read_ns /= iterations;
+    write_ns /= iterations;
 
     long long bytes_total = (long long)iterations * block_size;
     double throughput = (bytes_total / (1024.0 * 1024.0)) / get_elapsed(total_ns);
 
     if (csv) {
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
-               block_size / ALIGN, iterations,
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+               block_size / ALIGN, 
+	       iterations,
                block_size / ALIGN * iterations,
                (double)filesize / (1024.0 * 1024.0 * 1024.0),
                get_elapsed(read_ns),
                get_elapsed(write_ns),
-               get_elapsed(prep_ns),
-               get_elapsed(end_ns),
                get_elapsed(io_ns),
                get_elapsed(total_ns));
         return 0;
@@ -240,7 +227,6 @@ int main(int argc, char *argv[]) {
     printf("Read time:  %.3f s\n", get_elapsed(read_ns));
     printf("Write time: %.3f s\n", get_elapsed(write_ns));
     printf("IO other:   %.3f s\n", get_elapsed(io_ns));
-    printf("\nPrep: %.3f s\nEnd:  %.3f s\n", get_elapsed(prep_ns), get_elapsed(end_ns));
     printf("\nTotal time: %.3f s\n", get_elapsed(total_ns));
     printf("Throughput: %.2f MB/s\n", throughput);
     printf("--------------------------------------------------\n");
