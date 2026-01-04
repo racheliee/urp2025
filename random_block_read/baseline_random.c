@@ -1,4 +1,6 @@
-#define _GNU_SOURCE
+//todo: modify for loop 
+
+//#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -8,6 +10,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #define DEFAULT_BLOCK_SIZE 4096
 #define DEFAULT_ITERS 1000000
@@ -15,7 +18,7 @@
 
 typedef struct timespec timespec_t;
 
-static inline uint64_t ns_diff(timespec_t a, timespec_t b) {
+static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
     return (uint64_t)(b.tv_sec - a.tv_sec) * 1000000000ull
          + (uint64_t)(b.tv_nsec - a.tv_nsec);
 }
@@ -102,14 +105,31 @@ int main(int argc, char *argv[]) {
     }
 
     off_t filesize = st.st_size;
-    off_t max_blocks = filesize / block_size;
+    //off_t max_blocks = filesize / block_size;
+    off_t max_blocks = filesize / ALIGN;
     if (max_blocks == 0) {
         fprintf(stderr, "File is too small for chosen block size.\n");
         return 1;
     }
 
+    // create a set of blocks
+    off_t* src_blocks = malloc(sizeof(off_t) * block_num);
+    off_t* dst_blocks = malloc(sizeof(off_t) * block_num);
+    if (!src_blocks || !dst_blocks) {
+    	perror("malloc");
+	return 1;
+    }
+
+    // no duplicate 처리 필요할 수도...?
+    for (int j = 0; j < block_num; j++) {
+    	src_blocks[j] = rand() % max_units;
+    	do {
+        	dst_blocks[j] = rand() % max_units;
+    	} while (dst_blocks[j] == src_blocks[j]);
+    }
+
     void *buf;
-    if (posix_memalign(&buf, ALIGN, block_size) != 0) {
+    if (posix_memalign(&buf, ALIGN, block_num * (ALIGN)) != 0) {
         perror("posix_memalign");
         return 1;
     }

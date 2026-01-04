@@ -35,14 +35,15 @@ BASELINE_OBJS = baseline_random.o
 # Default target
 all: $(CLIENT) $(SERVER) $(BASELINE)
 
-# Generate RPC stubs and headers from .x file
-rpc: $(RPC_SPEC)
+$(RPC_HEADER) $(RPC_CLNT_STUB) $(RPC_SVC_STUB) $(RPC_XDR): $(RPC_SPEC)
 	$(RPCGEN) $(RPC_SPEC)
 	@# Fix uint32 type issue in generated header
 	@if grep -q "uint32 " $(RPC_HEADER) 2>/dev/null; then \
 		echo "Patching $(RPC_HEADER) to fix uint32 type..."; \
 		sed -i.bak 's/uint32 /u_int32_t /g' $(RPC_HEADER); \
 	fi
+
+rpc: $(RPC_SPEC)
 
 # Client executable
 $(CLIENT): $(CLIENT_OBJS)
