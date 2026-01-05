@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
         case 't':
             csv = 1;
             break;
- 	default:
+        default:
             usage(argv[0]);
             return 1;
         }
@@ -244,11 +244,11 @@ int main(int argc, char *argv[]) {
 
             uint64_t fiemap_ns0 = 0, fiemap_ns1 = 0;
 
-            if (get_pba(fd, src_logical, block_size,
+            if (get_pba(fd, src_logical, ALIGN,
                         &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
                 continue;
 
-            if (get_pba(fd, dst_logical, block_size,
+            if (get_pba(fd, dst_logical, ALIGN,
                         &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0) {
                 free(src_pba);
                 continue;
@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
 
 	    if (src_pba_cnt != 1 || dst_pba_cnt != 1) {
     		fprintf(stderr, "Unexpected multi-extent for 4KB block\n");
-    		continue;
+		continue;
 	    }
 
             // Add to batch
