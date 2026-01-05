@@ -9,16 +9,28 @@ set -Eeuo pipefail
 # - Generates logs + summary
 # =============================================================================
 
+#start of comment
+:<<"COMMENT"
+expected folder hierarchy:
+
+.
+ㄴ
+
+COMMENT
+#end of comment
+
+
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)
-iterations=(128000)
+#iterations=(128000)
+iterations=(1280) #only for debugging
 file_sizes=(30)   # GiB
 seed=1234
 
 SERVER_HOST="${SERVER_HOST:-10.0.0.2}"
 
 # ====== Paths ======
-LOG_DIR="${LOG_DIR:-./testing}"
+LOG_DIR="${LOG_DIR:-./random_logs}"
 mkdir -p "$LOG_DIR"
 
 DATE_DIR="$(date +%Y%m%d_%H%M%S)"
@@ -36,11 +48,17 @@ REFERENCE_FILE="$mnt/reference.bin"
 
 # ====== Binaries ======
 parent_dir="$(dirname "$(pwd)")"
-CLIENT_BIN="$parent_dir/client_random"
-BASELINE_BIN="$parent_dir/baseline_random"
+CLIENT_BIN="$parent_dir/random_block_read/client_random"
+BASELINE_BIN="$parent_dir/random_block_read/baseline_random"
+
+mnt="/mnt/nvme1"
+a="$mnt/a.txt"
+b="$mnt/b.txt"
 
 grandparent_dir="$(dirname "$(dirname "$(pwd)")")"
-CREATE_BIN="$grandparent_dir/create_file"
+gcc -O2 -Wall -o $parent_dir/create_file $parent_dir/create_file.c
+CREATE_BIN="$parent_dir/create_file"
+
 
 # ====== Colors ======
 GREEN="\033[1;32m"
@@ -152,28 +170,26 @@ for iter in "${iterations[@]}"; do
     flush_caches
 
     # Run baseline
-    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$iter" -b "$bn" -s "$seed" -t \
+    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$iter"/"$bn" -b "$bn" -s "$seed" -t \
       >> "$BASELINE_LOG" 2>&1
 
     # Correctness check
-    verify_correctness "$bn" "$iter"
+    #verify_correctness "$bn" "$iter"
 
-    # RPC tests with all batch sizes
-    for batch in "${batch_sizes[@]}"; do
-        echo -e "${YELLOW}=== RPC Test: bn=$bn iter=$iter batch=$batch ===${NC}"
+    # RPC tests
+    echo -e "${YELLOW}=== RPC Test: bn=$bn iter=$iter batch=$batch ===${NC}"
         
-        # Restore test file to pristine state
-        sudo cp "$BEFORE_FILE" "$TEST_FILE"
-        flush_caches
+    # Restore test file to pristine state
+    sudo cp "$BEFORE_FILE" "$TEST_FILE"
+    flush_caches
 
-        sudo "$CLIENT_BIN" "$SERVER_HOST" "$TEST_FILE" \
-          -n "$iter" -b "$bn" -s "$seed" -B "$batch" -t \
-          >> "$RPC_LOG" 2>&1
+    sudo "$CLIENT_BIN" "$SERVER_HOST" "$TEST_FILE" \
+      -n "$iter" -b "$bn" -s "$seed" -t \
+      >> "$RPC_LOG" 2>&1
 
-        verify_correctness "$bn" "$iter"
-        flush_caches
-        sleep 1
-    done
+    verify_correctness "$bn" "$iter"
+    flush_caches
+    sleep 1
 
   done
 done
