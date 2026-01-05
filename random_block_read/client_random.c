@@ -227,14 +227,14 @@ int main(int argc, char *argv[]) {
 
         // Collect batch_size operations
         int batch_count = 0;
-        for (int b = 0; b < batch_size && i < iterations; b++, i++) {
+        for (int b = 0; b < block_num ; b++) {
             // RANDOM source / dest blocks
             off_t src_blk = rand() % max_blocks;
             off_t dst_blk = rand() % max_blocks;
             while (src_blk == dst_blk) dst_blk = rand() % max_blocks;
 
-            off_t src_logical = src_blk * block_size;
-            off_t dst_logical = dst_blk * block_size;
+            off_t src_logical = src_blk * ALIGN;
+            off_t dst_logical = dst_blk * ALIGN;
 
             pba_seg *src_pba = NULL;
             pba_seg *dst_pba = NULL;
@@ -242,11 +242,11 @@ int main(int argc, char *argv[]) {
 
             uint64_t fiemap_ns0 = 0, fiemap_ns1 = 0;
 
-            if (get_pba(fd, src_logical, block_size,
+            if (get_pba(fd, src_logical, ALIGN,
                         &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
                 continue;
 
-            if (get_pba(fd, dst_logical, block_size,
+            if (get_pba(fd, dst_logical, ALIGN,
                         &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0) {
                 free(src_pba);
                 continue;
@@ -261,9 +261,14 @@ int main(int argc, char *argv[]) {
                 continue;
             }
 
+	    if (src_pba_cnt != 1 || dst_pba_cnt != 1) {
+    		fprintf(stderr, "Unexpected multi-extent for 4KB block\n");
+		continue;
+	    }
+
             // Add to batch
-            batch_params.pba_srcs[batch_count] = src_pba[0].pba;
-            batch_params.pba_dsts[batch_count] = dst_pba[0].pba;
+            batch_params.pba_srcs[b] = src_pba[0].pba;
+            batch_params.pba_dsts[b] = dst_pba[0].pba;
             batch_count++;
 
             free(src_pba);
@@ -275,7 +280,7 @@ int main(int argc, char *argv[]) {
         // Send batched RPC call
         if (batch_count > 0) {
             batch_params.count = batch_count;
-            batch_params.block_size = block_size;
+            batch_params.block_size = ALIGN;
 
             struct timespec t_rpc0, t_rpc1;
             clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
