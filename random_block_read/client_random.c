@@ -374,8 +374,8 @@ int main(int argc, char *argv[]) {
     if (csv) {
         printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                block_size / ALIGN, //block_num
-               iterations,
-               block_size / ALIGN * iterations, //total copied blocks
+               iterations, //iterations
+               iterations, //total copied blocks (same as # of iterations)
                (double)filesize / (1024.0 * 1024.0 * 1024.0),
                get_elapsed(server_read_ns),
                get_elapsed(server_write_ns),
@@ -393,8 +393,8 @@ int main(int argc, char *argv[]) {
     printf("\n\n");
     printf("------------ RPC Test Results ------------\n");
     printf("Iterations attempted: %ld\n", iterations);
-    printf("Block size: %zu bytes\n", block_size);
-    //printf("Batch size: %d\n", batch_size);
+    printf("Block size: %zu bytes\n", ALIGN);
+    printf("Batch size (Block num): %d blocks\n", block_num);
     printf("Seed: %ld\n", seed);
     printf("Log on: %s\n", log ? "true" : "false");
     printf("\n");

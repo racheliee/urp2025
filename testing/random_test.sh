@@ -11,12 +11,11 @@ set -Eeuo pipefail
 
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)
-iterations=(10000)
-batch_sizes=(1 10 50 100 200 500)
-file_sizes=(10)   # GiB
-seed=12345
+iterations=(128000)
+file_sizes=(30)   # GiB
+seed=1234
 
-SERVER_HOST="${SERVER_HOST:-eternity2}"
+SERVER_HOST="${SERVER_HOST:-10.0.0.2}"
 
 # ====== Paths ======
 LOG_DIR="${LOG_DIR:-./testing}"
@@ -68,8 +67,8 @@ for bin in "$CLIENT_BIN" "$BASELINE_BIN" "$CREATE_BIN"; do
 done
 
 # ====== CSV headers ======
-echo "block_num,iterations,total_blocks,file_size_gb,read_s,write_s,prep_s,end_s,io_s,total_s" > "$BASELINE_LOG"
-echo "block_num,iterations,total_blocks,file_size_gb,batch,server_read_s,server_write_s,server_other_s,prep_s,end_s,fiemap_s,rpc_s,io_s,total_s" > "$RPC_LOG"
+echo "block_num,iterations,total_blocks,file_size_gb,read_s,write_s,io_s,total_s" > "$BASELINE_LOG"
+echo "block_num,iterations,total_blocks,file_size_gb,server_read_s,server_write_s,server_other_s,fiemap_s,rpc_s,io_s,total_s" > "$RPC_LOG"
 
 # ====== Summary header ======
 cat > "$SUMMARY" << EOF
@@ -138,7 +137,7 @@ verify_correctness() {
 # =============================================================================
 
 test_num=0
-total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} * (1 + ${#batch_sizes[@]}) ))
+total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} ))
 
 echo -e "${BLUE}Total tests to run: $total_tests${NC}"
 echo ""
