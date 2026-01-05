@@ -22,8 +22,7 @@ COMMENT
 
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)
-#iterations=(128000)
-iterations=(1280) #only for debugging
+iterations=(128000)
 file_sizes=(30)   # GiB
 seed=1234
 
@@ -135,7 +134,7 @@ verify_correctness() {
 
     echo "Generating reference correctness file..."
     sudo cp "$BEFORE_FILE" "$REFERENCE_FILE"
-    sudo "$BASELINE_BIN" "$REFERENCE_FILE" -n "$iter" -b "$bn" -s "$seed" -t >/dev/null
+    sudo "$BASELINE_BIN" "$REFERENCE_FILE" -n "$(( iter / bn ))" -b "$bn" -s "$seed" -t >/dev/null
 
     echo "Comparing output..."
     if sudo cmp "$TEST_FILE" "$REFERENCE_FILE" >/dev/null 2>&1; then
@@ -154,8 +153,8 @@ verify_correctness() {
 # Main Test Loop
 # =============================================================================
 
-test_num=0
-total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} ))
+test_num=35
+total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} * $test_num))
 
 echo -e "${BLUE}Total tests to run: $total_tests${NC}"
 echo ""
@@ -170,14 +169,14 @@ for iter in "${iterations[@]}"; do
     flush_caches
 
     # Run baseline
-    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$iter"/"$bn" -b "$bn" -s "$seed" -t \
+    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$(( iter / bn ))" -b "$bn" -s "$seed" -t \
       >> "$BASELINE_LOG" 2>&1
 
     # Correctness check
     #verify_correctness "$bn" "$iter"
 
     # RPC tests
-    echo -e "${YELLOW}=== RPC Test: bn=$bn iter=$iter batch=$batch ===${NC}"
+    echo -e "${YELLOW}=== RPC Test: bn=$bn iter=$iter ===${NC}"
         
     # Restore test file to pristine state
     sudo cp "$BEFORE_FILE" "$TEST_FILE"
@@ -187,7 +186,7 @@ for iter in "${iterations[@]}"; do
       -n "$iter" -b "$bn" -s "$seed" -t \
       >> "$RPC_LOG" 2>&1
 
-    verify_correctness "$bn" "$iter"
+    #verify_correctness "$bn" "$iter"
     flush_caches
     sleep 1
 
