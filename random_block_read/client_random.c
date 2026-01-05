@@ -356,35 +356,36 @@ int main(int argc, char *argv[]) {
     }
 
     // per copy time calculation
-    server_read_ns /= (iterations * block_num);
-    server_write_ns /= (iterations * block_num);
-    server_other_ns /= (iterations * block_num);
+    server_read_ns /= (iterations);
+    server_write_ns /= (iterations);
+    server_other_ns /= (iterations);
 
-    total_ns /= (iterations * block_num); // approximate time for a single copy
-    fiemap_ns /= (iterations * block_num);
-    rpc_ns /= (iterations * block_num);
-    io_ns /= (iterations * block_num);
+    total_ns /= (iterations); // approximate time for a single copy
+    fiemap_ns /= (iterations);
+    rpc_ns /= (iterations);
+    io_ns /= (iterations);
     // ************************
 
-    long long total_bytes = (long long)iterations * block_size;
+    long long total_bytes = (long long)iterations * ALIGN;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0))
                              / get_elapsed(total_ns);
-
+    
+    // block_num, iterations, # of block_copies, file_size, Read time, Write time, (Server) Other time, Fiemap time, RPC time, I/O time, Total time
     if (csv) {
-        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d\n",
-               block_size / ALIGN,
+        printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+               block_size / ALIGN, //block_num
                iterations,
-               block_size / ALIGN * iterations,
+               block_size / ALIGN * iterations, //total copied blocks
                (double)filesize / (1024.0 * 1024.0 * 1024.0),
                get_elapsed(server_read_ns),
                get_elapsed(server_write_ns),
                get_elapsed(server_other_ns),
-               get_elapsed(prep_ns),
-               get_elapsed(end_ns),
+               //get_elapsed(prep_ns),
+               //get_elapsed(end_ns),
                get_elapsed(fiemap_ns),
                get_elapsed(rpc_ns),
                get_elapsed(io_ns),
-               get_elapsed(total_ns),
+               get_elapsed(total_ns)
                );
         return 0;
     }
