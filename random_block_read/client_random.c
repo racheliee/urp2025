@@ -104,8 +104,7 @@ static void usage(const char *prog) {
         "  -n iterations      Number of random copies (default: 1000000)\n"
         "  -s seed            Random seed (default: current time)\n"
         "  -l                 Show progress log\n"
-        "  -t                 Output results in CSV format\n"
-        "  -B (atch) size        Batch size for RPC (default: 100, max: 1024)\n",
+        "  -t                 Output results in CSV format\n",
         prog);
 }
 
@@ -130,7 +129,7 @@ int main(int argc, char *argv[]) {
     int batch_size = 100;  // Default batch size
 
     int opt;
-    while ((opt = getopt(argc, argv, "b:n:s:ltB:")) != -1) {
+    while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
             int block_num = strtoul(optarg, NULL, 10);
@@ -155,13 +154,6 @@ int main(int argc, char *argv[]) {
             break;
         case 't':
             csv = 1;
-            break;
-        case 'B':
-            batch_size = atoi(optarg);
-            if (batch_size <= 0 || batch_size > MAX_BATCH) {
-                fprintf(stderr, "Batch size must be between 1 and %d\n", MAX_BATCH);
-                return 1;
-            }
             break;
         default:
             usage(argv[0]);
@@ -227,7 +219,7 @@ int main(int argc, char *argv[]) {
                     i, iterations, (double)i / iterations * 100.0, elapsed);
         }
 
-        off_t max_blocks = filesize / block_size;
+        off_t max_blocks = filesize / ALIGN;
         if (max_blocks == 0) {
             fprintf(stderr, "File too small for chosen block size.\n");
             break;
