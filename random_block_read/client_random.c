@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fiemap.h>
@@ -27,7 +27,7 @@ static inline uint64_t ns_diff(struct timespec a, struct timespec b) {
 }
 
 static inline double get_elapsed(uint64_t ns) {
-    return (double)ns / 1e9;
+    return (double)ns / 1e3;
 }
 
 /* helper to get physical block address from logical offset */
@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     long seed = time(NULL);
     int log = 0;
     int csv = 0;
-    int batch_size = 100;  // Default batch size
+    //int batch_size = 100;  // Default batch size
     int block_num = 1;
 
     int opt;
@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
     pba_batch_params batch_params;
     
     // Test Start
-    long i = 0;
+    long i=0;
     while (i < iterations) {
         if (log && (i % 1000 == 0)) {
             struct timespec now_ts;
@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
 
         // Collect batch_size operations
         int batch_count = 0;
-        for (int b = 0; b < block_num ; b++) {
+        for (int b = 0; b < block_num && i < iterations ; b++, i++) {
             // RANDOM source / dest blocks
             off_t src_blk = rand() % max_blocks;
             off_t dst_blk = rand() % max_blocks;
@@ -385,7 +385,7 @@ int main(int argc, char *argv[]) {
                get_elapsed(rpc_ns),
                get_elapsed(io_ns),
                get_elapsed(total_ns),
-               batch_size);
+               );
         return 0;
     }
 
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
     printf("------------ RPC Test Results ------------\n");
     printf("Iterations attempted: %ld\n", iterations);
     printf("Block size: %zu bytes\n", block_size);
-    printf("Batch size: %d\n", batch_size);
+    //printf("Batch size: %d\n", batch_size);
     printf("Seed: %ld\n", seed);
     printf("Log on: %s\n", log ? "true" : "false");
     printf("\n");
