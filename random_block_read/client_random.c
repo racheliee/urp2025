@@ -104,8 +104,7 @@ static void usage(const char *prog) {
         "  -n iterations      Number of random copies (default: 1000000)\n"
         "  -s seed            Random seed (default: current time)\n"
         "  -l                 Show progress log\n"
-        "  -t                 Output results in CSV format\n"
-        "  -B (atch) size        Batch size for RPC (default: 100, max: 1024)\n",
+        "  -t                 Output results in CSV format\n",
         prog);
 }
 
@@ -128,12 +127,13 @@ int main(int argc, char *argv[]) {
     int log = 0;
     int csv = 0;
     int batch_size = 100;  // Default batch size
+    int block_num = 1;
 
     int opt;
-    while ((opt = getopt(argc, argv, "b:n:s:ltB:")) != -1) {
+    while ((opt = getopt(argc, argv, "b:n:s:lt")) != -1) {
         switch (opt) {
         case 'b': {
-            int block_num = strtoul(optarg, NULL, 10);
+            block_num = strtoul(optarg, NULL, 10);
             if (block_num <= 0) {
                 fprintf(stderr, "Block size must be positive number.\n");
                 return 1;
@@ -156,14 +156,7 @@ int main(int argc, char *argv[]) {
         case 't':
             csv = 1;
             break;
-        case 'B':
-            batch_size = atoi(optarg);
-            if (batch_size <= 0 || batch_size > MAX_BATCH) {
-                fprintf(stderr, "Batch size must be between 1 and %d\n", MAX_BATCH);
-                return 1;
-            }
-            break;
-        default:
+ 	default:
             usage(argv[0]);
             return 1;
         }
@@ -227,7 +220,8 @@ int main(int argc, char *argv[]) {
                     i, iterations, (double)i / iterations * 100.0, elapsed);
         }
 
-        off_t max_blocks = filesize / block_size;
+        //off_t max_blocks = filesize / block_size;
+	off_t max_blocks = filesize / ALIGN;
         if (max_blocks == 0) {
             fprintf(stderr, "File too small for chosen block size.\n");
             break;
@@ -235,14 +229,14 @@ int main(int argc, char *argv[]) {
 
         // Collect batch_size operations
         int batch_count = 0;
-        for (int b = 0; b < batch_size && i < iterations; b++, i++) {
+        for (int b = 0; b < block_num ; b++) {
             // RANDOM source / dest blocks
             off_t src_blk = rand() % max_blocks;
             off_t dst_blk = rand() % max_blocks;
             while (src_blk == dst_blk) dst_blk = rand() % max_blocks;
 
-            off_t src_logical = src_blk * block_size;
-            off_t dst_logical = dst_blk * block_size;
+            off_t src_logical = src_blk * ALIGN;
+            off_t dst_logical = dst_blk * ALIGN;
 
             pba_seg *src_pba = NULL;
             pba_seg *dst_pba = NULL;
@@ -269,9 +263,14 @@ int main(int argc, char *argv[]) {
                 continue;
             }
 
+	    if (src_pba_cnt != 1 || dst_pba_cnt != 1) {
+    		fprintf(stderr, "Unexpected multi-extent for 4KB block\n");
+    		continue;
+	    }
+
             // Add to batch
-            batch_params.pba_srcs[batch_count] = src_pba[0].pba;
-            batch_params.pba_dsts[batch_count] = dst_pba[0].pba;
+            batch_params.pba_srcs[b] = src_pba[0].pba;
+            batch_params.pba_dsts[b] = dst_pba[0].pba;
             batch_count++;
 
             free(src_pba);
@@ -283,7 +282,7 @@ int main(int argc, char *argv[]) {
         // Send batched RPC call
         if (batch_count > 0) {
             batch_params.count = batch_count;
-            batch_params.block_size = block_size;
+            batch_params.block_size = ALIGN;
 
             struct timespec t_rpc0, t_rpc1;
             clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
@@ -355,6 +354,17 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Time calculation failed. Do not match with total_ns\n");
         exit(1);
     }
+
+    // per copy time calculation
+    server_read_ns /= (iterations * block_num);
+    server_write_ns /= (iterations * block_num);
+    server_other_ns /= (iterations * block_num);
+
+    total_ns /= (iterations * block_num); // approximate time for a single copy
+    fiemap_ns /= (iterations * block_num);
+    rpc_ns /= (iterations * block_num);
+    io_ns /= (iterations * block_num);
+    // ************************
 
     long long total_bytes = (long long)iterations * block_size;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0))
