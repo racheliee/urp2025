@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #include "server_random.h"
 #include "blockcopy_random.h"
 #include <errno.h>
@@ -114,11 +114,12 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
     uint64_t total_read_ns = 0;
     uint64_t total_write_ns = 0;
 
-    for (u_int32_t i = 0; i < params->count; i++) {
+    for (u_int32_t i = 0; i < params->blocks.blocks_len; i++) {
         /* --- READ PHASE --- */
         struct timespec t_read0, t_read1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
-        ssize_t r = pread(fd, buf, params->block_size, params->pba_srcs[i]);
+        //ssize_t r = pread(fd, buf, params->block_size, params->pba_srcs[i]);
+	ssize_t r = pread(fd, buf, params->block_size, params->blocks.blocks_val[i].pba_src);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_read1);
         total_read_ns += ns_diff(t_read0, t_read1);
 
@@ -131,7 +132,8 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
         /* --- WRITE PHASE --- */
         struct timespec t_write0, t_write1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write0);
-        ssize_t w = pwrite(fd, buf, params->block_size, params->pba_dsts[i]);
+        //ssize_t w = pwrite(fd, buf, params->block_size, params->pba_dsts[i]);
+	ssize_t w = pwrite(fd, buf, params->block_size, params->blocks.blocks_val[i].pba_dst);
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
         total_write_ns += ns_diff(t_write0, t_write1);
 
