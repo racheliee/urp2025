@@ -9,11 +9,16 @@ struct pba_write_params {
     int   nbytes;       /* block size */
 };
 
+/* One block descriptor */
+struct pba_pair {
+    hyper pba_src;
+    hyper pba_dst;
+};
+
 /* Batched copy parameters (new version) */
 struct pba_batch_params {
-    hyper pba_srcs[MAX_BATCH];   /* array of PBAs */
-    hyper pba_dsts[MAX_BATCH];   /* array of PBAs */
-    unsigned int count;           /* how many elements are valid */
+    pba_pair blocks<>;
+    /* unsigned int count; */           /* how many elements are valid */
     unsigned int block_size;      /* size of each block */
 };
 
