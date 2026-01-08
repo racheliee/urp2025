@@ -90,7 +90,8 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
 
 /* New batched function */
 int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
-    static int result = 0;
+    static int result;
+    result = 0;
     struct timespec t_total0, t_total1;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
@@ -143,6 +144,7 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
             break;
         }
     }
+    fsync(fd);
 
     free(buf);
 
