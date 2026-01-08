@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     off_t max_blocks = filesize / ALIGN;
     if (max_blocks == 0) {
         fprintf(stderr, "File too small for chosen block size.\n");
-        break;
+        return 1;
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
 	// 마지막 잉여 예외 처리
     	int current_batch = block_num;
 	if (iterations - i < block_num) {
-	     cur_batch = iterations - i;
+	     current_batch = iterations - i;
 	}
 
 	// pick a random dst base
@@ -244,12 +244,11 @@ int main(int argc, char *argv[]) {
 	off_t dst_cursor = dst_start;
 
 	// prepare params
-	pba_batch_params batch_params;
         batch_params.block_size = block_size;
-        batch_params.blocks.blocks_len = cur_batch;
+        batch_params.blocks.blocks_len = current_batch;
         batch_params.blocks.blocks_val = malloc(current_batch * sizeof(pba_pair));
 
-        if (!batch.blocks.blocks_val) {
+        if (!batch_params.blocks.blocks_val) {
             perror("malloc batch.blocks");
             break;
         }
@@ -258,11 +257,11 @@ int main(int argc, char *argv[]) {
         for (int b = 0; b < block_num && i < iterations ; b++, i++) {
             // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            while (src_blk <= dst_blk+block_num-1 && src_blk >= dst_blk) src_blk = rand() % max_blocks;
+            while (src_blk <= dst_cursor+block_num-1 && src_blk >= dst_cursor) src_blk = rand() % max_blocks;
             off_t src_logical = src_blk * ALIGN;
 
 	    //dst는 iteration 안에서만 연속
-	    off_t dst_block = dst_cursor++;
+	    off_t dst_blk = dst_cursor++;
             off_t dst_logical = dst_blk * ALIGN;
 
             pba_seg *src_pba = NULL;
@@ -293,7 +292,6 @@ int main(int argc, char *argv[]) {
             // Add to batch
             batch_params.blocks.blocks_val[b].pba_src = src_pba[0].pba;
             batch_params.blocks.blocks_val[b].pba_dst = dst_pba[0].pba;
-            batch_count++;
 
             free(src_pba);
             free(dst_pba);
@@ -305,22 +303,22 @@ int main(int argc, char *argv[]) {
         struct timespec t_rpc0, t_rpc1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
 
-        int *rpc_res = write_pba_batch_1(&batch, clnt);
+        int *rpc_res = write_pba_batch_1(&batch_params, clnt);
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
         g_rpc_total_ns += ns_diff(t_rpc0, t_rpc1);
 
         if (rpc_res == NULL || *rpc_res != 0) {
             fprintf(stderr, "RPC batch write failed\n");
-            free(batch.blocks.blocks_val);
+            free(batch_params.blocks.blocks_val);
             break;
         }
 
-        free(batch.blocks.blocks_val);
+        free(batch_params.blocks.blocks_val);
         continue;
 
     batch_fail:
-        free(batch.blocks.blocks_val);
+        free(batch_params.blocks.blocks_val);
         break;
     }
 
