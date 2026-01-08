@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
 	off_t dst_cursor = dst_start;
 
 	// prepare params
-        batch_params.block_size = block_size;
+        batch_params.block_size = ALIGN;
         batch_params.blocks.blocks_len = current_batch;
         batch_params.blocks.blocks_val = malloc(current_batch * sizeof(pba_pair));
 
@@ -257,7 +257,7 @@ int main(int argc, char *argv[]) {
         for (int b = 0; b < block_num && i < iterations ; b++, i++) {
             // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            while (src_blk <= dst_cursor+block_num-1 && src_blk >= dst_cursor) src_blk = rand() % max_blocks;
+            while (src_blk < dst_start+block_num && src_blk >= dst_start) src_blk = rand() % max_blocks;
             off_t src_logical = src_blk * ALIGN;
 
 	    //dst는 iteration 안에서만 연속
