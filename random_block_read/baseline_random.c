@@ -140,14 +140,19 @@ int main(int argc, char *argv[]) {
                     i, iterations, (double)i/iterations * 100.0, elapsed);
         }
 
+	// pick a random destination base for every iteration
+	off_t dst_start = rand() % max_blocks;
+	if (dst_start + block_num > max_blocks) {dst_start = max_blocks - block_num;}
+
+
 	for (int j = 0 ; j < block_num ; j++) {
 
-            off_t src_blk = rand() % max_blocks;
-            off_t dst_blk = rand() % max_blocks;
-	    while (dst_blk == src_blk) {dst_blk = rand() % max_blocks;}
-
-            off_t src_off = src_blk * ALIGN;
+            off_t dst_blk = dst_start + j;
             off_t dst_off = dst_blk * ALIGN;
+
+            off_t src_blk = rand() % max_blocks;
+	    while (src_blk >= dst_start && src_blk < dst_start + block_num) {src_blk = rand() % max_blocks;}
+            off_t src_off = src_blk * ALIGN;
 
             /* READ */
             timespec_t t_r0, t_r1;
@@ -172,14 +177,15 @@ int main(int argc, char *argv[]) {
                 break;
             }
             iter_write_ns = ns_diff(t_w0, t_w1);
+
 	    total_read_ns += iter_read_ns;
             total_write_ns += iter_write_ns;
 
         }
+	fsync(fd);
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &t_iter1);
-
-        	total_iter_ns += ns_diff(t_iter0, t_iter1);
+        total_iter_ns += ns_diff(t_iter0, t_iter1);
     }
 
     //************** Iteration End **************
