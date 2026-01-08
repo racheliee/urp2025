@@ -254,10 +254,10 @@ int main(int argc, char *argv[]) {
         }
 
 	// fill the batch
-        for (int b = 0; b < block_num && i < iterations ; b++, i++) {
+        for (int b = 0; b < current_batch && i < iterations ; b++, i++) {
             // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            while (src_blk < dst_start+block_num && src_blk >= dst_start) src_blk = rand() % max_blocks;
+            while (src_blk < dst_start+current_batch && src_blk >= dst_start) src_blk = rand() % max_blocks;
             off_t src_logical = src_blk * ALIGN;
 
 	    //dst는 iteration 안에서만 연속
