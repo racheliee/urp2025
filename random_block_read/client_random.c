@@ -199,6 +199,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     off_t filesize = st.st_size;
+    
+    //off_t max_blocks = filesize / block_size;
+    off_t max_blocks = filesize / ALIGN;
+    if (max_blocks == 0) {
+        fprintf(stderr, "File too small for chosen block size.\n");
+        break;
+    }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_prep1);
 
@@ -219,23 +226,43 @@ int main(int argc, char *argv[]) {
                     "\rBlockCopy RPC Test: %ld / %ld (%6.1f%% ) | %6.2fs",
                     i, iterations, (double)i / iterations * 100.0, elapsed);
         }
+	
+	// 마지막 잉여 예외 처리
+    	int current_batch = block_num;
+	if (iterations - i < block_num) {
+	     cur_batch = iterations - i;
+	}
 
-        //off_t max_blocks = filesize / block_size;
-	off_t max_blocks = filesize / ALIGN;
-        if (max_blocks == 0) {
-            fprintf(stderr, "File too small for chosen block size.\n");
+	// pick a random dst base
+	off_t dst_start = rand() % max_blocks;
+
+	// assure num_blocks can be selected
+	if (dst_start + current_batch > max_blocks) {
+	    dst_start = max_blocks - current_batch;
+	}
+
+	off_t dst_cursor = dst_start;
+
+	// prepare params
+	pba_batch_params batch_params;
+        batch_params.block_size = block_size;
+        batch_params.blocks.blocks_len = cur_batch;
+        batch_params.blocks.blocks_val = malloc(current_batch * sizeof(pba_pair));
+
+        if (!batch.blocks.blocks_val) {
+            perror("malloc batch.blocks");
             break;
         }
 
-        // Collect batch_size operations
-        int batch_count = 0;
+	// fill the batch
         for (int b = 0; b < block_num && i < iterations ; b++, i++) {
-            // RANDOM source / dest blocks
+            // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            off_t dst_blk = rand() % max_blocks;
-            while (src_blk == dst_blk) dst_blk = rand() % max_blocks;
-
+            while (src_blk <= dst_blk+block_num-1 && src_blk >= dst_blk) src_blk = rand() % max_blocks;
             off_t src_logical = src_blk * ALIGN;
+
+	    //dst는 iteration 안에서만 연속
+	    off_t dst_block = dst_cursor++;
             off_t dst_logical = dst_blk * ALIGN;
 
             pba_seg *src_pba = NULL;
@@ -246,14 +273,13 @@ int main(int argc, char *argv[]) {
 
             if (get_pba(fd, src_logical, ALIGN,
                         &src_pba, &src_pba_cnt, &fiemap_ns0) != 0)
-                continue;
+	    {goto batch_fail;}
 
             if (get_pba(fd, dst_logical, ALIGN,
                         &dst_pba, &dst_pba_cnt, &fiemap_ns1) != 0) {
-                free(src_pba);
-                continue;
+                goto batch_fail;
             }
-
+/*
             if (src_pba_cnt != dst_pba_cnt) {
                 fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
                 fprintf(stderr, "Number of extents are not same. src_pba_cnt: %lu, dst_pba_cnt: %lu\n",
@@ -262,15 +288,11 @@ int main(int argc, char *argv[]) {
                 free(dst_pba);
                 continue;
             }
-
-	    if (src_pba_cnt != 1 || dst_pba_cnt != 1) {
-    		fprintf(stderr, "Unexpected multi-extent for 4KB block\n");
-		continue;
-	    }
+	    */
 
             // Add to batch
-            batch_params.pba_srcs[b] = src_pba[0].pba;
-            batch_params.pba_dsts[b] = dst_pba[0].pba;
+            batch_params.blocks.blocks_val[b].pba_src = src_pba[0].pba;
+            batch_params.blocks.blocks_val[b].pba_dst = dst_pba[0].pba;
             batch_count++;
 
             free(src_pba);
@@ -280,24 +302,26 @@ int main(int argc, char *argv[]) {
         }
 
         // Send batched RPC call
-        if (batch_count > 0) {
-            batch_params.count = batch_count;
-            batch_params.block_size = ALIGN;
+        struct timespec t_rpc0, t_rpc1;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
 
-            struct timespec t_rpc0, t_rpc1;
-            clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc0);
-            int *rpc_res = write_pba_batch_1(&batch_params, clnt);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
+        int *rpc_res = write_pba_batch_1(&batch, clnt);
 
-            uint64_t rpc_total_ns = ns_diff(t_rpc0, t_rpc1);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &t_rpc1);
+        g_rpc_total_ns += ns_diff(t_rpc0, t_rpc1);
 
-            if (rpc_res == NULL || *rpc_res == -1) {
-                fprintf(stderr, "RPC batch write failed\n");
-                break;
-            }
-
-            g_rpc_total_ns += rpc_total_ns;
+        if (rpc_res == NULL || *rpc_res != 0) {
+            fprintf(stderr, "RPC batch write failed\n");
+            free(batch.blocks.blocks_val);
+            break;
         }
+
+        free(batch.blocks.blocks_val);
+        continue;
+
+    batch_fail:
+        free(batch.blocks.blocks_val);
+        break;
     }
 
     if (log) {
@@ -393,7 +417,7 @@ int main(int argc, char *argv[]) {
     printf("\n\n");
     printf("------------ RPC Test Results ------------\n");
     printf("Iterations attempted: %ld\n", iterations);
-    printf("Block size: %zu bytes\n", ALIGN);
+    printf("Block size: %u bytes\n", ALIGN);
     printf("Batch size (Block num): %d blocks\n", block_num);
     printf("Seed: %ld\n", seed);
     printf("Log on: %s\n", log ? "true" : "false");
