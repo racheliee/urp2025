@@ -213,8 +213,7 @@ int main(int argc, char *argv[]) {
     pba_batch_params batch_params;
     
     // Test Start
-    long i=0;
-    while (i < iterations) {
+    for (long i = 0 ; i < iterations ; i++) {
         if (log && (i % 1000 == 0)) {
             struct timespec now_ts;
             clock_gettime(CLOCK_MONOTONIC_RAW, &now_ts);
@@ -228,10 +227,12 @@ int main(int argc, char *argv[]) {
         }
 	
 	// 마지막 잉여 예외 처리
+	/*
     	int current_batch = block_num;
 	if (iterations - i < block_num) {
 	     current_batch = iterations - i;
 	}
+	*/
 
 	// pick a random dst base
 	off_t dst_start = rand() % max_blocks;
@@ -245,7 +246,7 @@ int main(int argc, char *argv[]) {
 
 	// prepare params
         batch_params.block_size = ALIGN;
-        batch_params.blocks.blocks_len = current_batch;
+        batch_params.blocks.blocks_len = block_num;
         batch_params.blocks.blocks_val = malloc(current_batch * sizeof(pba_pair));
 
         if (!batch_params.blocks.blocks_val) {
@@ -254,15 +255,16 @@ int main(int argc, char *argv[]) {
         }
 
 	// fill the batch
-        for (int b = 0; b < current_batch ; b++) {
-            // RANDOM source
+        for (int b = 0; b < block_num ; b++) {
+	    //dst는 iteration 안에서만 연속
+	    off_t dst_blk = dst_start+b;
+            off_t dst_logical = dst_blk * ALIGN;
+ 
+ 	    // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            while (src_blk < dst_start+current_batch && src_blk >= dst_start) src_blk = rand() % max_blocks;
+            while (src_blk < dst_start+current_batch && src_blk >= dst_start) {src_blk = rand() % max_blocks;}
             off_t src_logical = src_blk * ALIGN;
 
-	    //dst는 iteration 안에서만 연속
-	    off_t dst_blk = dst_cursor++;
-            off_t dst_logical = dst_blk * ALIGN;
 
             pba_seg *src_pba = NULL;
             pba_seg *dst_pba = NULL;
@@ -315,7 +317,6 @@ int main(int argc, char *argv[]) {
         }
 
         free(batch_params.blocks.blocks_val);
-	i++;
         continue;
 
     batch_fail:
@@ -389,7 +390,7 @@ int main(int argc, char *argv[]) {
     io_ns /= (iterations);
     // ************************
 
-    long long total_bytes = (long long)iterations * ALIGN;
+    long long total_bytes = (long long)iterations * (long long)block_num * ALIGN;
     double throughput_mbps = (total_bytes / (1024.0 * 1024.0))
                              / get_elapsed(total_ns);
     
