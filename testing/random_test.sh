@@ -22,7 +22,8 @@ COMMENT
 
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)
-iterations=(128000)
+#iterations=(128000)
+iterations=(1280)
 file_sizes=(30)   # GiB
 seed=1234
 
@@ -128,6 +129,7 @@ echo ""
 # =============================================================================
 # Helper: deterministic correctness check
 # =============================================================================
+:<<'COMMENT'
 verify_correctness() {
     local bn="$1"
     local iter="$2"
@@ -148,50 +150,111 @@ verify_correctness() {
         sudo diff <(xxd "$TEST_FILE") <(xxd "$REFERENCE_FILE") | head -n 20 || true
     fi
 }
+COMMENT
+
+generate_reference() {
+    local bn="$1"
+    local iter="$2"
+
+    echo -e "${BLUE}Generating reference file (bn=$bn, iter=$iter)...${NC}"
+
+    sudo cp "$BEFORE_FILE" "$REFERENCE_FILE"
+    flush_caches
+
+    # baseline으로 reference 생성 (ground truth)
+    sudo "$BASELINE_BIN" "$REFERENCE_FILE" \
+        -n "$iter" \
+        -b "$bn" \
+        -s "$seed" \
+        -t >/dev/null
+
+    echo -e "${GREEN}Reference generation complete.${NC}"
+}
+
+compare_with_reference() {
+    local tag="$1"   # baseline or rpc
+    local bn="$2"
+    local iter="$3"
+
+    if sudo cmp "$TEST_FILE" "$REFERENCE_FILE" >/dev/null 2>&1; then
+        echo -e "${GREEN}[OK] ${tag} correctness VERIFIED${NC}"
+        echo "correctness,${tag},bn${bn},iter${iter},OK" >> "$SUMMARY"
+    else
+        echo -e "${RED}[ERROR] ${tag} MISMATCH DETECTED${NC}"
+        echo "correctness,${tag},bn${bn},iter${iter},FAIL" >> "$SUMMARY"
+
+        echo "Showing first few differing bytes:"
+        sudo diff <(xxd "$TEST_FILE") <(xxd "$REFERENCE_FILE") | head -n 20 || true
+        return 1
+    fi
+}
 
 # =============================================================================
 # Main Test Loop
 # =============================================================================
 
 test_num=35
-total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} * $test_num))
+test_id=0
+total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} * test_num))
 
 echo -e "${BLUE}Total tests to run: $total_tests${NC}"
 echo ""
 
+
 for iter in "${iterations[@]}"; do
   for bn in "${block_nums[@]}"; do
 
-    echo -e "${YELLOW}=== Baseline Test: bn=$bn iter=$iter ===${NC}"
+    # ------------------------------------------------------------
+    # 1) reference 생성 (bn, iter 조합당 1회)
+    # ------------------------------------------------------------
+    generate_reference "$bn" "$iter"
 
-    # Restore starting file
-    sudo cp "$BEFORE_FILE" "$TEST_FILE"
-    flush_caches
+    for (( t=1; t<=test_num; t++ )); do
+      test_id=$((test_id + 1))
 
-    # Run baseline
-    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$(( iter / bn ))" -b "$bn" -s "$seed" -t \
-      >> "$BASELINE_LOG" 2>&1
+      echo -e "${BLUE}=== Test Round $t / $test_num (bn=$bn, iter=$iter) ===${NC}"
 
-    # Correctness check
-    #verify_correctness "$bn" "$iter"
+      # ==========================================================
+      # Baseline Test
+      # ==========================================================
+      echo -e "${YELLOW}--- [${test_id}/${total_tests}] Baseline ---${NC}"
 
-    # RPC tests
-    echo -e "${YELLOW}=== RPC Test: bn=$bn iter=$iter ===${NC}"
-        
-    # Restore test file to pristine state
-    sudo cp "$BEFORE_FILE" "$TEST_FILE"
-    flush_caches
+      sudo cp "$BEFORE_FILE" "$TEST_FILE"
+      flush_caches
 
-    sudo "$CLIENT_BIN" "$SERVER_HOST" "$TEST_FILE" \
-      -n "$iter" -b "$bn" -s "$seed" -t \
-      >> "$RPC_LOG" 2>&1
+      sudo "$BASELINE_BIN" "$TEST_FILE" \
+        -n "$iter" \
+        -b "$bn" \
+        -s "$seed" \
+        -t \
+        >> "$BASELINE_LOG" 2>&1
 
-    #verify_correctness "$bn" "$iter"
-    flush_caches
-    sleep 1
+      compare_with_reference "baseline" "$bn" "$iter"
+
+      # ==========================================================
+      # RPC Test
+      # ==========================================================
+      echo -e "${YELLOW}--- [${test_id}/${total_tests}] RPC ---${NC}"
+
+      sudo cp "$BEFORE_FILE" "$TEST_FILE"
+      flush_caches
+
+      sudo "$CLIENT_BIN" "$SERVER_HOST" "$TEST_FILE" \
+        -n "$iter" \
+        -b "$bn" \
+        -s "$seed" \
+        -t \
+        >> "$RPC_LOG" 2>&1
+
+      compare_with_reference "rpc" "$bn" "$iter"
+
+      flush_caches
+      sleep 1
+    done
 
   done
 done
+
 
 echo -e "${GREEN}=== All tests completed ===${NC}"
 echo "Logs stored in: $RUN_DIR"

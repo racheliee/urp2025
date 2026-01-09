@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
         }
 
 	// fill the batch
-        for (int b = 0; b < current_batch && i < iterations ; b++, i++) {
+        for (int b = 0; b < current_batch ; b++) {
             // RANDOM source
             off_t src_blk = rand() % max_blocks;
             while (src_blk < dst_start+current_batch && src_blk >= dst_start) src_blk = rand() % max_blocks;
@@ -315,6 +315,7 @@ int main(int argc, char *argv[]) {
         }
 
         free(batch_params.blocks.blocks_val);
+	i++;
         continue;
 
     batch_fail:
