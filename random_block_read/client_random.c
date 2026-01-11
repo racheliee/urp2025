@@ -238,16 +238,16 @@ int main(int argc, char *argv[]) {
 	off_t dst_start = rand() % max_blocks;
 
 	// assure num_blocks can be selected
-	if (dst_start + current_batch > max_blocks) {
-	    dst_start = max_blocks - current_batch;
+	if (dst_start + block_num > max_blocks) {
+	    dst_start = max_blocks - block_num;
 	}
 
-	off_t dst_cursor = dst_start;
+	//off_t dst_cursor = dst_start;
 
 	// prepare params
         batch_params.block_size = ALIGN;
         batch_params.blocks.blocks_len = block_num;
-        batch_params.blocks.blocks_val = malloc(current_batch * sizeof(pba_pair));
+        batch_params.blocks.blocks_val = malloc(block_num * sizeof(pba_pair));
 
         if (!batch_params.blocks.blocks_val) {
             perror("malloc batch.blocks");
@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
  
  	    // RANDOM source
             off_t src_blk = rand() % max_blocks;
-            while (src_blk < dst_start+current_batch && src_blk >= dst_start) {src_blk = rand() % max_blocks;}
+            while (src_blk < dst_start+block_num && src_blk >= dst_start) {src_blk = rand() % max_blocks;}
             off_t src_logical = src_blk * ALIGN;
 
 
@@ -399,7 +399,7 @@ int main(int argc, char *argv[]) {
         printf("%lu,%ld,%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                block_size / ALIGN, //block_num
                iterations, //iterations
-               iterations, //total copied blocks (same as # of iterations)
+               iterations * block_num,
                (double)filesize / (1024.0 * 1024.0 * 1024.0),
                get_elapsed(server_read_ns),
                get_elapsed(server_write_ns),
