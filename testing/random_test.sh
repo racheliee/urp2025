@@ -37,8 +37,8 @@ DATE_DIR="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="$LOG_DIR/$DATE_DIR"
 mkdir -p "$RUN_DIR"
 
-BASELINE_LOG="$RUN_DIR/baseline.csv"
-RPC_LOG="$RUN_DIR/rpc.csv"
+BASELINE_LOG="$RUN_DIR/baseline.log"
+RPC_LOG="$RUN_DIR/rpc.log"
 SUMMARY="$RUN_DIR/summary.txt"
 
 mnt="/mnt/nvme1"
