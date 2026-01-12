@@ -206,6 +206,7 @@ int main(int argc, char *argv[]) {
     total_ns /= iterations;
     read_ns /= iterations;
     write_ns /= iterations;
+    io_ns /= iterations;
 
     long long bytes_total = (long long)iterations * block_size;
     double throughput = (bytes_total / (1024.0 * 1024.0)) / get_elapsed(total_ns);
