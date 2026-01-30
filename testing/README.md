@@ -25,9 +25,44 @@ urp2025(..)
         └baseline_random
 ```
 
-# sequential test
+# Sequential Test
 1. env check (necessary commands and binaries)
 2. create log directory named with current timestamp
 3. create test file + copy
 4. drop cache
-5. for 30: run client, baseline
+for 30:
+5. run client, baseline
+6. (Optional, line 103 - 106) compare client and baseline for sanity check
+
+# Finegrained Read Test
+1. env check (necessary commands and binaries)
+2. create log directory named with current timestamp
+3. create test file + copy
+4. drop cache
+for 30: 
+5. run client, baseline
+
+# Finegrained Write Test
+1. env check (necessary commands and binaries)
+2. create log directory named with current timestamp
+3. create test file + copy
+4. drop cache
+for 30:
+5. run client, baseline
+6. (Optional, line 98 - 101) compare client and baseline for sanity check
+
+# Random Test
+1. env check (necessary commands and binaries)
+2. create log directory named with current timestamp
+3. create test file + copy
+4. drop cache
+for 30:
+5. (Optional, line 215 - 235) compare client, baseline for sanity check
+6. run baseline
+7. run client
+8. flush cache
+
+# How to Run
+```
+sudo ./<test_name>.sh
+```
