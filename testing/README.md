@@ -26,4 +26,8 @@ urp2025(..)
 ```
 
 # sequential test
-
+1. env check (necessary commands and binaries)
+2. create log directory named with current timestamp
+3. create test file + copy
+4. drop cache
+5. for 30: run client, baseline
