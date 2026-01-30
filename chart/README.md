@@ -8,3 +8,8 @@ chart/(.)
     └outputs/
         └<Charts will be generated in this location>
 ```
+
+# How to run
+```
+python3 <filename.py>
+```
