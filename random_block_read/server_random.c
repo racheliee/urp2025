@@ -141,9 +141,6 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_write0);
         //ssize_t w = pwrite(fd, buf, params->block_size, params->pba_dsts[i]);
 	ssize_t w = pwrite(fd, buf, params->block_size, params->blocks.blocks_val[i].pba_dst);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
-        total_write_ns += ns_diff(t_write0, t_write1);
-
         if (w != (ssize_t)params->block_size) {
             perror("pwrite");
             result = -1;
@@ -157,6 +154,10 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
             result = -1;
         }
     }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t_write1);
+    total_write_ns += ns_diff(t_write0, t_write1);
+
+
 
     free(buf);
 
