@@ -63,6 +63,18 @@ for 30:
 8. flush cache
 
 # How to Run
+eternity1
 ```
 sudo ./<test_name>.sh
+```
+
+eternity2
+```
+sudo ./server
+```
+```
+sudo ./finegrained_server
+```
+```
+sudo ./server_random
 ```
