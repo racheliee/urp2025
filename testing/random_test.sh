@@ -9,16 +9,6 @@ set -Eeuo pipefail
 # - Generates logs + summary
 # =============================================================================
 
-#start of comment
-:<<"COMMENT"
-expected folder hierarchy:
-
-.
-ㄴ
-
-COMMENT
-#end of comment
-
 
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)

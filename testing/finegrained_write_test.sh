@@ -95,6 +95,11 @@ for round in $(seq 1 30); do
                     2> >(stdbuf -eL tee -a "$BASELINE_LOG_FILE" >&2)
                 flush_caches
 
+                # (4) 비교
+                #echo "[compare] sudo ./compare $a $b"
+                #sudo ./compare "$a" "$b"
+                #   flush_caches
+
                 echo "----- END   $case_id -----"
                 echo
             done
