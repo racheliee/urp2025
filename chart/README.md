@@ -1,6 +1,8 @@
 # Expected Directory Hierarchy
 ```
-chart/(.)
+└testing/(../testing)
+    └<log folders>
+└chart/(.)
     └finegrained_read_chart.py
     └finegrained_write_chart.py
     └random_chart.py
