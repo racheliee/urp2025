@@ -2,21 +2,12 @@
 set -Eeuo pipefail
 
 
-# ---- expected directory hierarchy----
-# HOME_DIR (최상위)
-#     ㄴtesting
-#         ㄴcompare
-#     ㄴsequential_block_read
-#         ㄴclient
-#         ㄴbaseline
-#         ㄴcreate_file
-#     ㄴrandom_block_read
 
 # ----- 파라미터 세트 -----
 block_nums=(1 2 4 8 16)
-block_copies=(128000)
+block_copies=(10000)
 file_sizes=(30)   # GiB
-MAX_ITERATIONS=35
+MAX_ITERATIONS=30
 seed=-1
 
 HOME_DIR="${HOME_DIR:-../sequential_block_read}"

@@ -3,13 +3,13 @@ set -Eeuo pipefail
 
 # ----- 파라미터 세트 -----
 byte_sizes=(8 16 32 64 128)
-block_copies=(1048576)
+block_copies=(1048576) #1MB
 file_sizes=(30)   # GiB
 seed=-1
 
 HOME_DIR="${HOME_DIR:-../finegrained_block_read}"
 
-LOG_DIR="${LOG_DIR:-./read_logs}"
+LOG_DIR="${LOG_DIR:-./finegrained_read_logs}"
 mkdir -p "$LOG_DIR"
 
 DATE_DIR="$(date +%Y%m%d_%H%M%S)"
@@ -64,7 +64,7 @@ sudo cp "$a" "$b"
 flush_caches
 
 
-for round in $(seq 1 35); do
+for round in $(seq 1 30); do
     echo "================ ROUND $round / 35 ================"
 
     for fs in "${file_sizes[@]}"; do
