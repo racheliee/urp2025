@@ -48,7 +48,7 @@ Traditional file transfer tools (e.g., `scp`, `rsync`) operate at the file-conte
 
 ```
 # client
-sudo ./client eternity2 /mnt/nvme/1gb.txt -b 4096 -n 1000
+sudo ./client eternity2 /mnt/nvme/a.txt -b 4096 -n 1000
 
 
 # server
