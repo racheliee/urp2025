@@ -92,6 +92,7 @@ int *write_pba_1_svc(pba_write_params *params, struct svc_req *rqstp) {
 int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
     static int result;
     result = 0;
+
     struct timespec t_total0, t_total1;
     clock_gettime(CLOCK_MONOTONIC_RAW, &t_total0);
 
@@ -105,6 +106,10 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
         }
     }
 
+    // blocks_len이 0이면 그냥 성공 처리
+    u_int32_t n = params->blocks.blocks_len;
+    if (n == 0) return &result;
+
     void *buf;
     if (posix_memalign(&buf, ALIGN, params->block_size) != 0) {
         perror("posix_memalign");
@@ -117,6 +122,7 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
 
     for (u_int32_t i = 0; i < params->blocks.blocks_len; i++) {
         /* --- READ PHASE --- */
+
         struct timespec t_read0, t_read1;
         clock_gettime(CLOCK_MONOTONIC_RAW, &t_read0);
         //ssize_t r = pread(fd, buf, params->block_size, params->pba_srcs[i]);
@@ -144,7 +150,13 @@ int *write_pba_batch_1_svc(pba_batch_params *params, struct svc_req *rqstp) {
             break;
         }
     }
-    fsync(fd);
+    
+    if (result == 0) {
+        if (fsync(fd) < 0) {
+            perror("fsync");
+            result = -1;
+        }
+    }
 
     free(buf);
 

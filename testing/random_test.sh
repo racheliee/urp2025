@@ -22,8 +22,8 @@ COMMENT
 
 # ====== Parameters ======
 block_nums=(1 2 4 8 16)
-#iterations=(128000)
-iterations=(1280)
+iterations=(10000)
+#iterations=(1280)
 file_sizes=(30)   # GiB
 seed=1234
 
@@ -44,7 +44,10 @@ SUMMARY="$RUN_DIR/summary.txt"
 mnt="/mnt/nvme1"
 TEST_FILE="$mnt/test.bin"
 BEFORE_FILE="$mnt/before.bin"
-REFERENCE_FILE="$mnt/reference.bin"
+REF_DIR="$mnt/reference"
+OUT_DIR="$mnt/output"
+mkdir -p "$REF_DIR" "$OUT_DIR"
+
 
 # ====== Binaries ======
 parent_dir="$(dirname "$(pwd)")"
@@ -99,7 +102,6 @@ Seed: $seed
 
 Block numbers: ${block_nums[*]}
 Iterations: ${iterations[*]}
-Batch sizes: ${batch_sizes[*]}
 File sizes: ${file_sizes[*]} GiB
 
 ==========================================
@@ -153,47 +155,63 @@ verify_correctness() {
 COMMENT
 
 generate_reference() {
-    local bn="$1"
-    local iter="$2"
+  local bn="$1"
+  local iter="$2"
 
-    echo -e "${BLUE}Generating reference file (bn=$bn, iter=$iter)...${NC}"
+  local ref_file="$REF_DIR/ref_bn${bn}_iter${iter}.bin"
 
-    sudo cp "$BEFORE_FILE" "$REFERENCE_FILE"
-    flush_caches
+  echo "[REF] Generating reference (bn=$bn, iter=$iter)"
+  sudo rm -f "$ref_file"
 
-    # baseline으로 reference 생성 (ground truth)
-    sudo "$BASELINE_BIN" "$REFERENCE_FILE" \
-        -n "$iter" \
-        -b "$bn" \
-        -s "$seed" \
-        -t >/dev/null
+  sudo cp "$BEFORE_FILE" "$TEST_FILE"
+  flush_caches
 
-    echo -e "${GREEN}Reference generation complete.${NC}"
+  sudo "$BASELINE_BIN" "$TEST_FILE" \
+    -n "$iter" \
+    -b "$bn" \
+    -s "$seed" \
+    -t \
+    > /dev/null
+
+  # 결과 파일 덤프
+  sudo dd if="$TEST_FILE" of="$ref_file" bs=4K status=none
 }
 
 compare_with_reference() {
-    local tag="$1"   # baseline or rpc
-    local bn="$2"
-    local iter="$3"
+  local mode="$1"   # baseline | rpc
+  local bn="$2"
+  local iter="$3"
 
-    if sudo cmp "$TEST_FILE" "$REFERENCE_FILE" >/dev/null 2>&1; then
-        echo -e "${GREEN}[OK] ${tag} correctness VERIFIED${NC}"
-        echo "correctness,${tag},bn${bn},iter${iter},OK" >> "$SUMMARY"
-    else
-        echo -e "${RED}[ERROR] ${tag} MISMATCH DETECTED${NC}"
-        echo "correctness,${tag},bn${bn},iter${iter},FAIL" >> "$SUMMARY"
+  local ref_file="$REF_DIR/ref_bn${bn}_iter${iter}.bin"
+  local out_file="$OUT_DIR/${mode}_bn${bn}_iter${iter}.bin"
 
-        echo "Showing first few differing bytes:"
-        sudo diff <(xxd "$TEST_FILE") <(xxd "$REFERENCE_FILE") | head -n 20 || true
-        return 1
-    fi
+  # 결과 덤프
+  sudo dd if="$TEST_FILE" of="$out_file" bs=4K status=none
+
+  if cmp -s "$ref_file" "$out_file"; then
+    echo "[OK] $mode correctness VERIFIED"
+    rm -f "$out_file" 
+
+  else
+    echo "[ERROR] $mode MISMATCH DETECTED"
+    echo "Files:"
+    echo "  REF : $ref_file"
+    echo "  OUT : $out_file"
+
+    # 처음 몇 바이트만 보여주기
+    cmp -l "$ref_file" "$out_file" | head -n 20
+    exit 1
+  fi
 }
+
+
+
 
 # =============================================================================
 # Main Test Loop
 # =============================================================================
 
-test_num=35
+test_num=30
 test_id=0
 total_tests=$(( ${#iterations[@]} * ${#block_nums[@]} * test_num))
 
@@ -208,6 +226,23 @@ for iter in "${iterations[@]}"; do
     # 1) reference 생성 (bn, iter 조합당 1회)
     # ------------------------------------------------------------
     generate_reference "$bn" "$iter"
+    ref_file="$REF_DIR/ref_bn${bn}_iter${iter}.bin"
+
+    echo "correctness check..."
+
+    # 2) baseline correctness 1회
+    sudo cp "$BEFORE_FILE" "$TEST_FILE"
+    flush_caches
+    sudo "$BASELINE_BIN" "$TEST_FILE" -n "$iter" -b "$bn" -s "$seed" -t
+    compare_with_reference "baseline" "$bn" "$iter"
+
+    # 3) rpc correctness 1회
+    sudo cp "$BEFORE_FILE" "$TEST_FILE"
+    flush_caches
+    sudo "$CLIENT_BIN" "$SERVER_HOST" "$TEST_FILE" -n "$iter" -b "$bn" -s "$seed" -t
+    compare_with_reference "rpc" "$bn" "$iter"
+
+    echo "done!"
 
     for (( t=1; t<=test_num; t++ )); do
       test_id=$((test_id + 1))
@@ -229,7 +264,7 @@ for iter in "${iterations[@]}"; do
         -t \
         >> "$BASELINE_LOG" 2>&1
 
-      compare_with_reference "baseline" "$bn" "$iter"
+      #compare_with_reference "baseline" "$bn" "$iter"
 
       # ==========================================================
       # RPC Test
@@ -246,11 +281,13 @@ for iter in "${iterations[@]}"; do
         -t \
         >> "$RPC_LOG" 2>&1
 
-      compare_with_reference "rpc" "$bn" "$iter"
+      #compare_with_reference "rpc" "$bn" "$iter"
 
       flush_caches
       sleep 1
     done
+
+    rm -f "$ref_file"
 
   done
 done

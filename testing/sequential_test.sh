@@ -21,7 +21,7 @@ seed=-1
 
 HOME_DIR="${HOME_DIR:-../sequential_block_read}"
 
-LOG_DIR="${LOG_DIR:-$HOME_DIR/logs}"
+LOG_DIR="${LOG_DIR:-./sequential_logs}"
 mkdir -p "$LOG_DIR"
 
 DATE_DIR="$(date +%Y%m%d_%H%M%S)"
