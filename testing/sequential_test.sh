@@ -5,7 +5,7 @@ set -Eeuo pipefail
 
 # ----- 파라미터 세트 -----
 block_nums=(1 2 4 8 16)
-block_copies=(10000)
+block_copies=(128000)
 file_sizes=(30)   # GiB
 MAX_ITERATIONS=30
 seed=-1
